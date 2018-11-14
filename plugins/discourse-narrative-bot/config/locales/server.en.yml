@@ -139,13 +139,13 @@ en:
         second_response: |-
           Aw, sorry. I’m still not getting it. :anguished:
 
-          I’m just a bot, but if you’d like to reach a real person, see [our contact page](/about).
+          I’m just a bot, but if you’d like to reach a real person, see [our contact page](%{base_path}/about).
 
           In the meantime, I’ll stay out of your way.
 
     new_user_narrative:
       reset_trigger: "new user"
-      title: "New user narrative completetion certificate"
+      title: "New user narrative completion certificate"
       cert_title: "In recognition of successful completion of the new user tutorial"
 
       hello:

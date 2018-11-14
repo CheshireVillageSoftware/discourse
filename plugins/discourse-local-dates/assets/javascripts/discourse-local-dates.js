@@ -11,19 +11,27 @@
         clearTimeout(this.timeout);
       }
 
-      var relativeTime = moment.utc(
-        options.date + " " + options.time,
-        "YYYY-MM-DD HH:mm:ss"
-      );
+      var relativeTime;
+      if (options.timezone) {
+        relativeTime = moment
+          .tz(options.date + " " + options.time, options.timezone)
+          .utc();
+      } else {
+        relativeTime = moment.utc(options.date + " " + options.time);
+      }
 
-      if (options.recurring && relativeTime < moment().utc()) {
-        var parts = options.recurring.split(".");
-        var count = parseInt(parts[0], 10);
-        var type = parts[1];
-        var diff = moment().diff(relativeTime, type);
-        var add = Math.ceil(diff + count);
+      if (relativeTime < moment().utc()) {
+        if (options.recurring) {
+          var parts = options.recurring.split(".");
+          var count = parseInt(parts[0], 10);
+          var type = parts[1];
+          var diff = moment().diff(relativeTime, type);
+          var add = Math.ceil(diff + count);
 
-        relativeTime = relativeTime.add(add, type);
+          relativeTime = relativeTime.add(add, type);
+        } else {
+          $element.addClass("past");
+        }
       }
 
       var previews = options.timezones.split("|").map(function(timezone) {
@@ -45,9 +53,28 @@
         }
       });
 
-      var relativeTime = relativeTime.tz(
-        options.forceTimezone || moment.tz.guess()
-      );
+      var displayTimezone = moment.tz.guess();
+      var relativeTime = relativeTime.tz(displayTimezone);
+
+      var d = function(key) {
+        var translated = I18n.t("discourse_local_dates.relative_dates." + key, {
+          time: "LT"
+        });
+        translated = translated
+          .split("LT")
+          .map(function(w) {
+            return "[" + w + "]";
+          })
+          .join("LT");
+        return translated;
+      };
+
+      var relativeFormat = {
+        sameDay: d("today"),
+        nextDay: d("tomorrow"),
+        lastDay: d("yesterday"),
+        sameElse: "L"
+      };
 
       if (
         options.format !== "YYYY-MM-DD HH:mm:ss" &&
@@ -56,7 +83,7 @@
           moment().add(2, "day")
         )
       ) {
-        relativeTime = relativeTime.calendar();
+        relativeTime = relativeTime.calendar(null, relativeFormat);
       } else {
         relativeTime = relativeTime.format(options.format);
       }
@@ -70,14 +97,14 @@
 
       var displayedTime = relativeTime.replace(
         "TZ",
-        _formatTimezone(options.forceTimezone || moment.tz.guess()).join(": ")
+        _formatTimezone(displayTimezone).join(": ")
       );
 
       $element
         .html(html)
         .attr("title", joinedPreviews)
         .attr("data-tooltip", joinedPreviews)
-        .addClass("cooked")
+        .addClass("cooked-date")
         .find(".relative-time")
         .text(displayedTime);
 
@@ -94,10 +121,10 @@
       var options = {};
       options.format = $this.attr("data-format");
       options.date = $this.attr("data-date");
-      options.time = $this.attr("data-time");
+      options.time = $this.attr("data-time") || "00:00:00";
       options.recurring = $this.attr("data-recurring");
-      options.timezones = $this.attr("data-timezones") || "Etc/UTC";
-      options.forceTimezone = $this.attr("data-force-timezone");
+      options.timezones = $this.attr("data-timezones");
+      options.timezone = $this.attr("data-timezone");
 
       processElement($this, options);
     });

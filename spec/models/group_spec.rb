@@ -588,28 +588,28 @@ describe Group do
 
       # Add a group without one to consider `NULL` check
       g2.add(user)
-      expect(user.group_locked_trust_level).to be_nil
+      expect(user.group_granted_trust_level).to be_nil
       expect(user.manual_locked_trust_level).to be_nil
 
       g0.add(user)
       expect(user.reload.trust_level).to eq(2)
-      expect(user.group_locked_trust_level).to eq(2)
+      expect(user.group_granted_trust_level).to eq(2)
       expect(user.manual_locked_trust_level).to be_nil
 
       g1.add(user)
       expect(user.reload.trust_level).to eq(3)
-      expect(user.group_locked_trust_level).to eq(3)
+      expect(user.group_granted_trust_level).to eq(3)
       expect(user.manual_locked_trust_level).to be_nil
 
       g1.remove(user)
       expect(user.reload.trust_level).to eq(2)
-      expect(user.group_locked_trust_level).to eq(2)
+      expect(user.group_granted_trust_level).to eq(2)
       expect(user.manual_locked_trust_level).to be_nil
 
       g0.remove(user)
       user.reload
       expect(user.manual_locked_trust_level).to be_nil
-      expect(user.group_locked_trust_level).to be_nil
+      expect(user.group_granted_trust_level).to be_nil
       expect(user.trust_level).to eq(0)
     end
   end
@@ -710,11 +710,16 @@ describe Group do
     end
 
     it "always sets user's primary group" do
-      group.update(primary_group: true)
+      group.update(primary_group: true, title: 'AAAA')
       expect { group.add(user) }.to change { user.reload.primary_group }.from(nil).to(group)
 
-      new_group = Fabricate(:group, primary_group: true)
-      expect { new_group.add(user) }.to change { user.reload.primary_group }.from(group).to(new_group)
+      new_group = Fabricate(:group, primary_group: true, title: 'BBBB')
+
+      expect {
+        new_group.add(user)
+        user.reload
+      }.to change { user.primary_group }.from(group).to(new_group)
+        .and change { user.title }.from('AAAA').to('BBBB')
     end
 
     context 'when adding a user into a public group' do

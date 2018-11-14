@@ -19,6 +19,11 @@ class User < ActiveRecord::Base
   include Roleable
   include HasCustomFields
   include SecondFactorManager
+  include HasDestroyedWebHook
+
+  self.ignored_columns = %w{
+    group_locked_trust_level
+  }
 
   has_many :posts
   has_many :notifications, dependent: :destroy
@@ -251,8 +256,20 @@ class User < ActiveRecord::Base
     plugin_staff_user_custom_fields[custom_field_name] = plugin
   end
 
+  def self.plugin_public_user_custom_fields
+    @plugin_public_user_custom_fields ||= {}
+  end
+
+  def self.register_plugin_public_custom_field(custom_field_name, plugin)
+    plugin_public_user_custom_fields[custom_field_name] = plugin
+  end
+
   def self.whitelisted_user_custom_fields(guardian)
     fields = []
+
+    plugin_public_user_custom_fields.each do |k, v|
+      fields << k if v.enabled?
+    end
 
     if SiteSetting.public_user_custom_fields.present?
       fields += SiteSetting.public_user_custom_fields.split('|')
@@ -327,6 +344,13 @@ class User < ActiveRecord::Base
 
   def self.find_by_username(username)
     find_by(username_lower: username.downcase)
+  end
+
+  def group_granted_trust_level
+    GroupUser
+      .where(user_id: id)
+      .includes(:group)
+      .maximum("groups.grant_trust_level")
   end
 
   def enqueue_welcome_message(message_type)
@@ -421,24 +445,41 @@ class User < ActiveRecord::Base
     @unread_pms ||= unread_notifications_of_type(Notification.types[:private_message])
   end
 
+  # PERF: This safeguard is in place to avoid situations where
+  # a user with enormous amounts of unread data can issue extremely
+  # expensive queries
+  MAX_UNREAD_NOTIFICATIONS = 99
+
+  def self.max_unread_notifications
+    @max_unread_notifications ||= MAX_UNREAD_NOTIFICATIONS
+  end
+
+  def self.max_unread_notifications=(val)
+    @max_unread_notifications = val
+  end
+
   def unread_notifications
     @unread_notifications ||= begin
       # perf critical, much more efficient than AR
       sql = <<~SQL
-          SELECT COUNT(*)
-            FROM notifications n
-       LEFT JOIN topics t ON t.id = n.topic_id
-           WHERE t.deleted_at IS NULL
-             AND n.notification_type <> :pm
-             AND n.user_id = :user_id
-             AND n.id > :seen_notification_id
-             AND NOT read
+        SELECT COUNT(*) FROM (
+          SELECT 1 FROM
+          notifications n
+          LEFT JOIN topics t ON t.id = n.topic_id
+           WHERE t.deleted_at IS NULL AND
+            n.notification_type <> :pm AND
+            n.user_id = :user_id AND
+            n.id > :seen_notification_id AND
+            NOT read
+          LIMIT :limit
+        ) AS X
       SQL
 
       DB.query_single(sql,
         user_id: id,
         seen_notification_id: seen_notification_id,
-        pm:  Notification.types[:private_message]
+        pm:  Notification.types[:private_message],
+        limit: User.max_unread_notifications
     )[0].to_i
     end
   end
@@ -508,7 +549,6 @@ class User < ActiveRecord::Base
     payload = {
       unread_notifications: unread_notifications,
       unread_private_messages: unread_private_messages,
-      total_unread_notifications: total_unread_notifications,
       read_first_notification: read_first_notification?,
       last_notification: json,
       recent: recent,
@@ -912,7 +952,7 @@ class User < ActiveRecord::Base
       .where.not(post_id: disagreed_flag_post_ids)
       .each do |tl|
       begin
-        message = I18n.t('flag_reason.spam_hosts', domain: tl.domain)
+        message = I18n.t('flag_reason.spam_hosts', domain: tl.domain, base_path: Discourse.base_path)
         PostAction.act(Discourse.system_user, tl.post, PostActionType.types[:spam], message: message)
       rescue PostAction::AlreadyActed
         # If the user has already acted, just ignore it
@@ -946,6 +986,8 @@ class User < ActiveRecord::Base
   end
 
   def on_tl3_grace_period?
+    return true if SiteSetting.tl3_promotion_min_duration.to_i.days.ago.year < 2013
+
     UserHistory.for(self, :auto_trust_level_change)
       .where('created_at >= ?', SiteSetting.tl3_promotion_min_duration.to_i.days.ago)
       .where(previous_value: TrustLevel[2].to_s)
@@ -1382,7 +1424,6 @@ end
 #  staged                    :boolean          default(FALSE), not null
 #  first_seen_at             :datetime
 #  silenced_till             :datetime
-#  group_locked_trust_level  :integer
 #  manual_locked_trust_level :integer
 #
 # Indexes

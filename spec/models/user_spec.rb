@@ -1378,7 +1378,7 @@ describe User do
       expect(user.title).to eq("bars and wats")
       expect(user.trust_level).to eq(1)
       expect(user.manual_locked_trust_level).to be_nil
-      expect(user.group_locked_trust_level).to eq(1)
+      expect(user.group_granted_trust_level).to eq(1)
     end
   end
 
@@ -1665,6 +1665,26 @@ describe User do
         expect(User.not_silenced).to include(user0)
         expect(User.not_silenced).to_not include(user1)
       end
+    end
+  end
+
+  describe "#unread_notifications" do
+    before do
+      User.max_unread_notifications = 3
+    end
+
+    after do
+      User.max_unread_notifications = nil
+    end
+
+    it "limits to MAX_UNREAD_NOTIFICATIONS" do
+      user = Fabricate(:user)
+
+      4.times do
+        Notification.create!(user_id: user.id, notification_type: 1, read: false, data: '{}')
+      end
+
+      expect(user.unread_notifications).to eq(3)
     end
   end
 

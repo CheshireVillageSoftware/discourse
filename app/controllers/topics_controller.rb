@@ -250,7 +250,12 @@ class TopicsController < ApplicationController
   end
 
   def destroy_timings
-    PostTiming.destroy_for(current_user.id, [params[:topic_id].to_i])
+    if params[:last].to_s == "1"
+      PostTiming.destroy_last_for(current_user, params[:topic_id])
+    else
+      PostTiming.destroy_for(current_user.id, [params[:topic_id].to_i])
+    end
+
     render body: nil
   end
 
@@ -845,7 +850,7 @@ class TopicsController < ApplicationController
 
     respond_to do |format|
       format.html do
-        @description_meta = @topic_view.topic.excerpt || @topic_view.summary
+        @description_meta = @topic_view.topic.excerpt.present? ? @topic_view.topic.excerpt : @topic_view.summary
         store_preloaded("topic_#{@topic_view.topic.id}", MultiJson.dump(topic_view_serializer))
         render :show
       end

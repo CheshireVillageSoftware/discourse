@@ -1,13 +1,15 @@
 # frozen_string_literal: true
 
+# note, we require 2.5.2 and up cause 2.5.1 had some mail bugs we no longer
+# monkey patch, so this avoids people booting with this problem version
 begin
-  if !RUBY_VERSION.match?(/^2\.[456]/)
-    STDERR.puts "Discourse requires Ruby 2.4.0 or up"
+  if !RUBY_VERSION.match?(/^2\.(([67])|(5\.[2-9]))/)
+    STDERR.puts "Discourse requires Ruby 2.5.2 or up"
     exit 1
   end
 rescue
   # no String#match?
-  STDERR.puts "Discourse requires Ruby 2.4.0 or up"
+  STDERR.puts "Discourse requires Ruby 2.5.2 or up"
   exit 1
 end
 
@@ -120,6 +122,12 @@ module Discourse
       google-tag-manager.js
       google-universal-analytics.js
       preload-application-data.js
+      authentication-complete.js
+      print-page.js
+      omniauth-complete.js
+      activate-account.js
+      auto-redirect.js
+      wizard-start.js
     }
 
     # Precompile all available locales
@@ -188,6 +196,9 @@ module Discourse
     # so nginx strips etags, may revisit when mainline nginx
     # supports etags (post 1.7)
     config.middleware.delete Rack::ETag
+
+    require 'content_security_policy'
+    config.middleware.swap ActionDispatch::ContentSecurityPolicy::Middleware, ContentSecurityPolicy::Middleware
 
     require 'middleware/discourse_public_exceptions'
     config.exceptions_app = Middleware::DiscoursePublicExceptions.new(Rails.public_path)

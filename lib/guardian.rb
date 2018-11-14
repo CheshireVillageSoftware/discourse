@@ -33,9 +33,11 @@ class Guardian
   end
 
   attr_accessor :can_see_emails
+  attr_reader :request
 
-  def initialize(user = nil)
+  def initialize(user = nil, request = nil)
     @user = user.presence || AnonymousUser.new
+    @request = request
   end
 
   def user
@@ -377,6 +379,12 @@ class Guardian
 
     Theme.user_theme_ids.include?(parent) &&
       (components - Theme.components_for(parent)).empty?
+  end
+
+  def auth_token
+    if cookie = request&.cookies[Auth::DefaultCurrentUserProvider::TOKEN_COOKIE]
+      UserAuthToken.hash_token(cookie)
+    end
   end
 
   private
