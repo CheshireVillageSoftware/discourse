@@ -62,6 +62,16 @@ describe Upload do
     expect(upload.thumbnail_height).to eq(500)
   end
 
+  it "dimension calculation returns nil on missing image" do
+    upload = UploadCreator.new(huge_image, "image.png").create_for(user_id)
+    upload.update_columns(width: nil, height: nil, thumbnail_width: nil, thumbnail_height: nil)
+
+    missing_url = "wrong_folder#{upload.url}"
+    upload.update_columns(url: missing_url)
+    expect(upload.thumbnail_height).to eq(nil)
+    expect(upload.thumbnail_width).to eq(nil)
+  end
+
   it "extracts file extension" do
     created_upload = UploadCreator.new(image, image_filename).create_for(user_id)
     expect(created_upload.extension).to eq("png")
@@ -219,6 +229,12 @@ describe Upload do
     it "should be able to look up sha1 even with leading zeros" do
       sha1 = '0000c513e1da04f7b4e99230851ea2aafeb8cc4e'
       expect(Upload.sha1_from_short_url('upload://1Eg9p8rrCURq4T3a6iJUk0ri6.png')).to eq(sha1)
+    end
+  end
+
+  describe '#to_s' do
+    it 'should return the right value' do
+      expect(upload.to_s).to eq(upload.url)
     end
   end
 

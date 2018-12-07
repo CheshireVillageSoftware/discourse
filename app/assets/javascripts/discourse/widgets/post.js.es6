@@ -16,10 +16,7 @@ import hbs from "discourse/widgets/hbs-compiler";
 
 function transformWithCallbacks(post) {
   let transformed = transformBasicPost(post);
-  console.log("transforming!");
-  console.log(transformed);
   postTransformCallbacks(transformed);
-  console.log("transforming! done");
   return transformed;
 }
 
@@ -467,7 +464,11 @@ createWidget("post-article", {
   },
 
   buildAttributes(attrs) {
-    return { "data-post-id": attrs.id, "data-user-id": attrs.user_id };
+    return {
+      "data-post-id": attrs.id,
+      "data-topic-id": attrs.topicId,
+      "data-user-id": attrs.user_id
+    };
   },
 
   html(attrs, state) {

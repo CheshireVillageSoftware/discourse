@@ -500,7 +500,10 @@ class TopicsController < ApplicationController
   def remove_allowed_user
     params.require(:username)
     topic = Topic.find_by(id: params[:topic_id])
+    raise Discourse::NotFound unless topic
     user = User.find_by(username: params[:username])
+    raise Discourse::NotFound unless user
+
     guardian.ensure_can_remove_allowed_users!(topic, user)
 
     if topic.remove_allowed_user(current_user, user)
@@ -560,7 +563,7 @@ class TopicsController < ApplicationController
       ))
     end
 
-    guardian.ensure_can_invite_to!(topic, groups)
+    guardian.ensure_can_invite_to!(topic)
     group_ids = groups.map(&:id)
 
     begin
@@ -573,7 +576,25 @@ class TopicsController < ApplicationController
           render json: success_json
         end
       else
-        render json: failed_json, status: 422
+        json = failed_json
+
+        unless topic.private_message?
+          group_names = topic.category
+            .visible_group_names(current_user)
+            .where(automatic: false)
+            .pluck(:name)
+            .join(", ")
+
+          if group_names.present?
+            json.merge!(errors: [
+              I18n.t("topic_invite.failed_to_invite",
+                group_names: group_names
+              )
+            ])
+          end
+        end
+
+        render json: json, status: 422
       end
     rescue Topic::UserExists => e
       render json: { errors: [e.message] }, status: 422
@@ -806,7 +827,7 @@ class TopicsController < ApplicationController
         host: request.host,
         current_user: current_user,
         topic_id: @topic_view.topic.id,
-        post_number: params[:post_number],
+        post_number: @topic_view.current_post_number,
         username: request['u'],
         ip_address: request.remote_ip
       }

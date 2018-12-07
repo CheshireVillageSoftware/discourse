@@ -49,7 +49,7 @@ class PushNotificationPusher
         title: I18n.t("discourse_push_notifications.popup.confirm_title",
                       site_title: SiteSetting.title),
         body: I18n.t("discourse_push_notifications.popup.confirm_body"),
-        icon:  ActionController::Base.helpers.image_url("push-notifications/check.png"),
+        icon: ActionController::Base.helpers.image_url("push-notifications/check.png"),
         badge: get_badge,
         tag: "#{Discourse.current_hostname}-subscription"
       }
@@ -65,9 +65,11 @@ class PushNotificationPusher
   protected
 
   def self.get_badge
-    return !SiteSetting.push_notifications_icon_url.blank? ?
-             SiteSetting.push_notifications_icon_url :
-             ActionController::Base.helpers.image_url("push-notifications/discourse.png")
+    if SiteSetting.site_push_notifications_icon_url.present?
+      SiteSetting.site_push_notifications_icon_url
+    else
+      ActionController::Base.helpers.image_url("push-notifications/discourse.png")
+    end
   end
 
   def self.send_notification(user, subscription, message)

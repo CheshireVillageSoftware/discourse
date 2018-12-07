@@ -128,6 +128,8 @@ module Discourse
       activate-account.js
       auto-redirect.js
       wizard-start.js
+      onpopstate-handler.js
+      embed-application.js
     }
 
     # Precompile all available locales
@@ -197,7 +199,12 @@ module Discourse
     # supports etags (post 1.7)
     config.middleware.delete Rack::ETag
 
-    require 'content_security_policy'
+    unless Rails.env.development?
+      require 'middleware/enforce_hostname'
+      config.middleware.insert_after Rack::MethodOverride, Middleware::EnforceHostname
+    end
+
+    require 'content_security_policy/middleware'
     config.middleware.swap ActionDispatch::ContentSecurityPolicy::Middleware, ContentSecurityPolicy::Middleware
 
     require 'middleware/discourse_public_exceptions'
@@ -239,6 +246,7 @@ module Discourse
     end
 
     require_dependency 'stylesheet/manager'
+    require_dependency 'svg_sprite/svg_sprite'
 
     config.after_initialize do
       # require common dependencies that are often required by plugins

@@ -131,6 +131,10 @@
     @extend .topic-list-main-link;
   }
 
+  .link-bottom-line {
+    font-size: $font-down-1;
+  }
+
   .topic-featured-link {
     padding-left: 5px;
   }
@@ -155,7 +159,6 @@
   .topic-status {
     margin-right: 4px;
     padding: 0;
-    font-size: 1.071em;
     &:last-of-type {
       margin-right: 0;
     }
@@ -251,16 +254,8 @@ ol.category-breadcrumb {
   }
 }
 
-.d-icon-thumb-tack.unpinned {
-  @include fa-icon-rotate(180deg, 1);
-  color: $primary;
-  /* because it is rotated, right becomes left! */
-  padding-left: 3px;
-  padding-right: 0 !important;
-}
-
-.topic-statuses .fa {
-  padding-right: 3px;
+.d-icon-thumbtack.unpinned {
+  @include fa-rotate(180deg, 1);
 }
 
 .top-title-buttons {

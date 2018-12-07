@@ -28,14 +28,19 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    vertical-align: middle;
     a {
+      vertical-align: middle;
       color: dark-light-choose($primary-high, $secondary-low);
     }
   }
   .fa {
     font-size: $font-down-1;
-    margin-left: 3px;
     color: dark-light-choose($primary-medium, $secondary-medium);
+  }
+  .svg-icon-title {
+    margin-left: 3px;
+    margin-right: 0px;
   }
   .new_user a,
   .user-title,
@@ -162,7 +167,7 @@
   .post-infos {
     display: flex;
     flex: 0 0 auto;
-    align-items: baseline;
+    align-items: center;
   }
 }
 
@@ -504,12 +509,6 @@ aside.quote {
   }
 }
 
-// this ensures consistent top margin on topic posts even if the first line of a post
-// is a top-margin-less element like a list or image.
-.topic-body .regular {
-  margin-top: 15px;
-}
-
 .post-info {
   flex: 0 0 auto;
   margin-right: 0.5em;
@@ -630,7 +629,7 @@ blockquote > *:last-child {
     padding: 0.7em 0;
     border-top: none;
     margin-right: 11px;
-    i {
+    .d-icon {
       font-size: 2em;
       width: 45px;
       text-align: center;
@@ -740,9 +739,10 @@ a.mention-group {
 
     > * {
       overflow: hidden;
+      vertical-align: middle;
     }
 
-    > i.fa {
+    > .d-icon {
       color: dark-light-choose($primary-medium, $secondary-medium);
       margin-right: 6px;
       font-size: $font-0;
@@ -833,11 +833,6 @@ a.mention-group {
   .reply-to-tab {
     span {
       display: none;
-    }
-  }
-  .names {
-    span {
-      display: block;
     }
   }
   .user-title {

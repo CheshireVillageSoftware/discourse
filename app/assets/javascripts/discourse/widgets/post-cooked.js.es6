@@ -104,6 +104,11 @@ export default class PostCooked {
           valid = href.indexOf(lc.url) >= 0;
         }
 
+        // Match server-side behaviour for internal links with query params
+        if (lc.internal && /\?/.test(href)) {
+          valid = href.split("?")[0] === lc.url;
+        }
+
         // don't display badge counts on category badge & oneboxes (unless when explicitely stated)
         if (valid && isValidLink($link)) {
           const title = I18n.t("topic_map.clicks", { count: lc.clicks });
@@ -131,7 +136,7 @@ export default class PostCooked {
     if ($aside.data("expanded")) {
       this._updateQuoteElements($aside, "chevron-up");
       // Show expanded quote
-      const $blockQuote = $("blockquote", $aside);
+      const $blockQuote = $("> blockquote", $aside);
       $aside.data("original-contents", $blockQuote.html());
 
       const originalText = $blockQuote.text().trim();

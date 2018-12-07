@@ -538,6 +538,7 @@ en:
           description: "You will never be notified of anything about new topics in this group."
       flair_url: "Avatar Flair Image"
       flair_url_placeholder: "(Optional) Image URL or Font Awesome class"
+      flair_url_description: "Use square images no smaller than 20px by 20px or FontAwesome icons (accepted formats: \"fa-icon\", \"far fa-icon\" or \"fab fa-icon\")."
       flair_bg_color: "Avatar Flair Background Color"
       flair_bg_color_placeholder: "(Optional) Hex color value"
       flair_color: "Avatar Flair Color"
@@ -581,9 +582,12 @@ en:
       topic_sentence:
         one: "1 topic"
         other: "%{count} topics"
-      topic_stat_sentence:
-        one: "%{count} new topic in the past %{unit}."
-        other: "%{count} new topics in the past %{unit}."
+      topic_stat_sentence_week:
+        one: "%{count} new topic in the past week."
+        other: "%{count} new topics in the past week."
+      topic_stat_sentence_month:
+        one: "%{count} new topic in the past month."
+        other: "%{count} new topics in the past month."
       n_more: "Categories (%{count} more) ..."
 
     ip_lookup:
@@ -1356,6 +1360,7 @@ en:
       saved_local_draft_tip: "saved locally"
       similar_topics: "Your topic is similar to..."
       drafts_offline: "drafts offline"
+      edit_conflict: 'edit conflict'
 
       group_mentioned_limit: "<b>Warning!</b> You mentioned <a href='{{group_link}}'>{{group}}</a>, however this group has more members than the administrator configured mention limit of {{max}} users. Nobody will be notified. "
       group_mentioned:
@@ -1372,7 +1377,7 @@ en:
         title_too_long: "Title can't be more than {{max}} characters"
         post_missing: "Post can't be empty"
         post_length: "Post must be at least {{min}} characters"
-        try_like: 'Have you tried the <i class="fa fa-heart"></i> button?'
+        try_like: "Have you tried the {{heart}} button?"
         category_missing: "You must choose a category"
         tags_missing: "You must choose at least {{count}} tags"
 
@@ -2053,7 +2058,6 @@ en:
 
     post:
       quote_reply: "Quote"
-      edit: "<i class='fa fa-pencil'></i> {{link}} {{replyAvatar}} {{username}}"
       edit_reason: "Reason: "
       post_number: "post {{number}}"
       wiki_last_edited_on: "wiki last edited on"
@@ -2254,7 +2258,7 @@ en:
           revert: "Revert to this revision"
           edit_wiki: "Edit Wiki"
           edit_post: "Edit Post"
-          comparing_previous_to_current_out_of_total: "<strong>{{previous}}</strong> <i class='fa fa-arrows-h'></i> <strong>{{current}}</strong> / {{total}}"
+          comparing_previous_to_current_out_of_total: "<strong>{{previous}}</strong> {{icon}} <strong>{{current}}</strong> / {{total}}"
         displays:
           inline:
             title: "Show the rendered output with additions and removals inline"
@@ -2707,7 +2711,7 @@ en:
       manage_groups: "Manage Tag Groups"
       manage_groups_description: "Define groups to organize tags"
       upload: "Upload Tags"
-      upload_description: "Upload a text file to create tags in bulk"
+      upload_description: "Upload a csv file to create tags in bulk"
       upload_instructions: "One per line, optionally with a tag group in the format 'tag_name,tag_group'."
       upload_successful: "Tags uploaded successfully"
       delete_unused_confirmation:
@@ -3078,6 +3082,8 @@ en:
         active_notice: "We will deliver event details when it happens."
         categories_filter_instructions: "Relevant webhooks will only be triggered if the event is related with specified categories. Leave blank to trigger webhooks for all categories."
         categories_filter: "Triggered Categories"
+        tags_filter_instructions: "Relevant webhooks will only be triggered if the event is related with specified tags. Leave blank to trigger webhooks for all tags."
+        tags_filter: "Triggered Tags"
         groups_filter_instructions: "Relevant webhooks will only be triggered if the event is related with specified groups. Leave blank to trigger webhooks for all groups."
         groups_filter: "Triggered Groups"
         delete_confirm: "Delete this webhook?"
@@ -3407,6 +3413,13 @@ en:
         settings: "Settings"
         templates: "Templates"
         preview_digest: "Preview Summary"
+        advanced_test:
+          title: "Advanced Test"
+          desc: "See how Discourse processes received emails. To be able to correctly process the email, please paste below the whole original email message."
+          email: "Original message"
+          run: "Run Test"
+          text: "Selected Text Body"
+          elided: "Elided Text"
         sending_test: "Sending test Email..."
         error: "<b>ERROR</b> - %{server_error}"
         test_error: "There was a problem sending the test email. Please double-check your mail settings, verify that your host is not blocking mail connections, and try again."
@@ -3474,6 +3487,7 @@ en:
           silence_user: "User Silenced"
           delete_post: "Post Deleted"
           delete_topic: "Topic Deleted"
+          post_approved: "Post Approved"
 
       logs:
         title: "Logs"
@@ -3568,6 +3582,7 @@ en:
             delete_badge: "delete badge"
             merge_user: "merge user"
             entity_export: "export entity"
+            change_name: "change name"
         screened_emails:
           title: "Screened Emails"
           description: "When someone tries to create a new account, the following email addresses will be checked and the registration will be blocked, or some other action performed."
@@ -4092,6 +4107,7 @@ en:
   wizard_js:
     wizard:
       done: "Done"
+      finish: "Finish"
       back: "Back"
       next: "Next"
       step: "%{current} of %{total}"

@@ -1,70 +1,28 @@
 # frozen_string_literal: true
-require_dependency 'global_path'
+require_dependency 'content_security_policy/builder'
+require_dependency 'content_security_policy/extension'
 
 class ContentSecurityPolicy
-  include GlobalPath
-
-  class Middleware
-    def initialize(app)
-      @app = app
+  class << self
+    def policy
+      new.build
     end
 
-    def call(env)
-      request = Rack::Request.new(env)
-      _, headers, _ = response = @app.call(env)
-
-      return response unless html_response?(headers) && ContentSecurityPolicy.enabled?
-
-      policy = ContentSecurityPolicy.new.build
-      headers['Content-Security-Policy'] = policy if SiteSetting.content_security_policy
-      headers['Content-Security-Policy-Report-Only'] = policy if SiteSetting.content_security_policy_report_only
-
-      response
+    def base_url
+      @base_url || Discourse.base_url
     end
-
-    private
-
-    def html_response?(headers)
-      headers['Content-Type'] && headers['Content-Type'] =~ /html/
-    end
-  end
-
-  def self.enabled?
-    SiteSetting.content_security_policy || SiteSetting.content_security_policy_report_only
-  end
-
-  def initialize
-    @directives = {
-      script_src: script_src,
-    }
-
-    @directives[:report_uri] = path('/csp_reports') if SiteSetting.content_security_policy_collect_reports
+    attr_writer :base_url
   end
 
   def build
-    policy = ActionDispatch::ContentSecurityPolicy.new
+    builder = Builder.new
 
-    @directives.each do |directive, sources|
-      if sources.is_a?(Array)
-        policy.public_send(directive, *sources)
-      else
-        policy.public_send(directive, sources)
-      end
-    end
+    Extension.theme_extensions.each { |extension| builder << extension }
+    Extension.plugin_extensions.each { |extension| builder << extension }
+    builder << Extension.site_setting_extension
 
-    policy.build
-  end
-
-  private
-
-  def script_src
-    sources = [:self, :unsafe_eval]
-
-    sources << :https if SiteSetting.force_https
-    sources << Discourse.asset_host if Discourse.asset_host.present?
-    sources << 'www.google-analytics.com' if SiteSetting.ga_universal_tracking_code.present?
-    sources << 'www.googletagmanager.com' if SiteSetting.gtm_container_id.present?
-
-    sources.concat(SiteSetting.content_security_policy_script_src.split('|'))
+    builder.build
   end
 end
+
+CSP = ContentSecurityPolicy

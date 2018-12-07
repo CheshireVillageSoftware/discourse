@@ -60,13 +60,17 @@
 .title-wrapper {
   display: flex;
   flex-wrap: wrap;
-  width: 90%;
-  align-items: flex-end;
   .btn-small {
     margin: 0 6px 0 0;
   }
   a.topic-featured-link {
     display: inline-block;
+  }
+  .topic-statuses {
+    line-height: 0.95;
+    .d-icon {
+      color: $primary-medium;
+    }
   }
 }
 
@@ -97,7 +101,7 @@ a.badge-category {
   a.badge-category {
     margin-top: 5px;
   }
-  a.edit-topic i {
+  a.edit-topic .d-icon {
     font-size: 0.8em;
   }
   .edit-topic-title {
@@ -151,12 +155,6 @@ a.badge-category {
   clear: both;
 }
 
-.extra-info-wrapper {
-  .badge-wrapper {
-    float: left;
-  }
-}
-
 .has-pending-posts {
   padding: 0.5em;
   background-color: $highlight-medium;
@@ -165,6 +163,14 @@ a.badge-category {
   }
   margin-top: 1em;
   max-width: 757px;
+}
+
+.suggested-topics-wrapper.related-messages-wrapper {
+  .suggested-topics:nth-of-type(n + 2) {
+    thead {
+      display: none;
+    }
+  }
 }
 
 // Target the .badge-category text, the bullet icon needs to maintain `display: block`
@@ -232,21 +238,21 @@ a.badge-category {
         margin-left: 0.5em;
         flex: 0 0 auto;
       }
-      i {
+      .d-icon {
         font-size: $font-down-2;
         margin: 0 0.5em 0 0;
       }
     }
   }
   a.reply-new {
-    i {
+    .d-icon {
       background: $secondary;
       border-radius: 20px;
       transition: all linear 0.15s;
     }
     &:hover {
       color: $tertiary;
-      i {
+      .d-icon {
         background: $tertiary-low;
       }
     }
@@ -258,11 +264,7 @@ a.topic-featured-link {
   text-transform: lowercase;
   color: dark-light-choose($primary-medium, $secondary-medium);
   font-size: 0.875rem;
-  &::before {
-    position: relative;
-    top: 0.1em;
-    padding-right: 3px;
-    font-family: FontAwesome;
-    content: "\f08e";
+  .d-icon {
+    margin-right: 3px;
   }
 }

@@ -206,7 +206,7 @@ export default Ember.Controller.extend(ModalFunctionality, {
           this.set("inviteIcon", "envelope");
           return I18n.t("topic.invite_reply.to_topic_email");
         } else {
-          this.set("inviteIcon", "hand-o-right");
+          this.set("inviteIcon", "hand-point-right");
           return I18n.t("topic.invite_reply.to_topic_username");
         }
       }
@@ -289,7 +289,7 @@ export default Ember.Controller.extend(ModalFunctionality, {
 
       model.setProperties({ saving: true, error: false });
 
-      const onerror = function(e) {
+      const onerror = e => {
         if (e.jqXHR.responseJSON && e.jqXHR.responseJSON.errors) {
           self.set("errorMessage", e.jqXHR.responseJSON.errors[0]);
         } else {

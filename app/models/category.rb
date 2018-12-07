@@ -28,6 +28,7 @@ class Category < ActiveRecord::Base
   belongs_to :latest_post, class_name: "Post"
   belongs_to :uploaded_logo, class_name: "Upload"
   belongs_to :uploaded_background, class_name: "Upload"
+  belongs_to :uploaded_meta, class_name: "Upload"
 
   has_many :topics
   has_many :category_users
@@ -478,6 +479,10 @@ class Category < ActiveRecord::Base
     self.name_lower = name.downcase if self.name
   end
 
+  def visible_group_names(user)
+    self.groups.visible_groups(user)
+  end
+
   def secure_group_ids
     if self.read_restricted?
       groups.pluck("groups.id")
@@ -535,7 +540,8 @@ class Category < ActiveRecord::Base
   end
 
   def full_slug(separator = "-")
-    url[3..-1].gsub("/", separator)
+    start_idx = "#{Discourse.base_uri}/c/".length
+    url[start_idx..-1].gsub("/", separator)
   end
 
   def url
@@ -662,6 +668,7 @@ end
 #  sort_ascending                    :boolean
 #  uploaded_logo_id                  :integer
 #  uploaded_background_id            :integer
+#  uploaded_meta_id                  :integer
 #  topic_featured_link_allowed       :boolean          default(TRUE)
 #  all_topics_wiki                   :boolean          default(FALSE), not null
 #  show_subcategory_list             :boolean          default(FALSE)

@@ -21,6 +21,7 @@ class Upload < ActiveRecord::Base
   attr_accessor :for_theme
   attr_accessor :for_private_message
   attr_accessor :for_export
+  attr_accessor :for_site_setting
 
   validates_presence_of :filesize
   validates_presence_of :original_filename
@@ -31,6 +32,10 @@ class Upload < ActiveRecord::Base
     User.where(uploaded_avatar_id: self.id).update_all(uploaded_avatar_id: nil)
     UserAvatar.where(gravatar_upload_id: self.id).update_all(gravatar_upload_id: nil)
     UserAvatar.where(custom_upload_id: self.id).update_all(custom_upload_id: nil)
+  end
+
+  def to_s
+    self.url
   end
 
   def thumbnail(width = self.thumbnail_width, height = self.thumbnail_height)
@@ -122,8 +127,12 @@ class Upload < ActiveRecord::Base
         Discourse.store.download(self).path
       end
 
-    self.width, self.height = size = FastImage.new(path).size
-    self.thumbnail_width, self.thumbnail_height = ImageSizer.resize(*size)
+    begin
+      self.width, self.height = size = FastImage.new(path, raise_on_failure: true).size
+      self.thumbnail_width, self.thumbnail_height = ImageSizer.resize(*size)
+    rescue => e
+      Discourse.warn_exception(e, message: "Error getting image dimensions")
+    end
     nil
   end
 
