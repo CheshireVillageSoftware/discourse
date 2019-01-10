@@ -58,6 +58,32 @@ describe Admin::EmailController do
       expect(log["id"]).to eq(email_log.id)
       expect(log["reply_key"]).to eq(post_reply_key.reply_key)
     end
+
+    it 'should be able to filter by reply key' do
+      email_log_2 = Fabricate(:email_log, post: post)
+
+      post_reply_key_2 = Fabricate(:post_reply_key,
+        post: post,
+        user: email_log_2.user,
+        reply_key: "2d447423-c625-4fb9-8717-ff04ac60eee8"
+      )
+
+      [
+        "17ff04",
+        "2d447423c6254fb98717ff04ac60eee8"
+      ].each do |reply_key|
+        get "/admin/email/sent.json", params: {
+          reply_key: reply_key
+        }
+
+        expect(response.status).to eq(200)
+
+        logs = JSON.parse(response.body)
+
+        expect(logs.size).to eq(1)
+        expect(logs.first["reply_key"]).to eq(post_reply_key_2.reply_key)
+      end
+    end
   end
 
   describe '#skipped' do
@@ -120,7 +146,7 @@ describe Admin::EmailController do
         expect(incoming['sent_test_email_message']).to eq(I18n.t("admin.email.sent_test_disabled"))
       end
 
-      it 'sends mail to staff only when setting is "non-staff"' do
+      it 'sends mail to everyone when setting is "non-staff"' do
         SiteSetting.disable_emails = 'non-staff'
 
         post "/admin/email/test.json", params: { email_address: admin.email }
@@ -129,7 +155,7 @@ describe Admin::EmailController do
 
         post "/admin/email/test.json", params: { email_address: eviltrout.email }
         incoming = JSON.parse(response.body)
-        expect(incoming['sent_test_email_message']).to eq(I18n.t("admin.email.sent_test_disabled_for_non_staff"))
+        expect(incoming['sent_test_email_message']).to eq(I18n.t("admin.email.sent_test"))
       end
 
       it 'sends mail to everyone when setting is "no"' do

@@ -122,6 +122,7 @@ class User < ActiveRecord::Base
   after_save :badge_grant
   after_save :expire_old_email_tokens
   after_save :index_search
+  after_save :check_site_contact_username
   after_commit :trigger_user_created_event, on: :create
   after_commit :trigger_user_destroyed_event, on: :destroy
 
@@ -350,6 +351,10 @@ class User < ActiveRecord::Base
       .where(user_id: id)
       .includes(:group)
       .maximum("groups.grant_trust_level")
+  end
+
+  def visible_groups
+    groups.visible_groups(self)
   end
 
   def enqueue_welcome_message(message_type)
@@ -779,12 +784,12 @@ class User < ActiveRecord::Base
     (since_reply.count >= SiteSetting.newuser_max_replies_per_topic)
   end
 
-  def delete_all_posts!(guardian)
+  def delete_posts_in_batches(guardian, batch_size = 20)
     raise Discourse::InvalidAccess unless guardian.can_delete_all_posts? self
 
     QueuedPost.where(user_id: id).delete_all
 
-    posts.order("post_number desc").each do |p|
+    posts.order("post_number desc").limit(batch_size).each do |p|
       PostDestroyer.new(guardian.user, p).destroy
     end
   end
@@ -1367,6 +1372,13 @@ class User < ActiveRecord::Base
     end
 
     true
+  end
+
+  def check_site_contact_username
+    if (saved_change_to_admin? || saved_change_to_moderator?) &&
+        self.username == SiteSetting.site_contact_username && !staff?
+      SiteSetting.set_and_log(:site_contact_username, SiteSetting.defaults[:site_contact_username])
+    end
   end
 
   def self.ensure_consistency!

@@ -7,6 +7,8 @@ class ContentSecurityPolicy
 
     def initialize
       @directives = {}.tap do |directives|
+        directives[:base_uri] = [:none]
+        directives[:object_src] = [:none]
         directives[:script_src] = script_src
         directives[:worker_src] = worker_src
         directives[:report_uri] = report_uri if SiteSetting.content_security_policy_collect_reports
@@ -44,13 +46,14 @@ class ContentSecurityPolicy
     def script_src
       [
         :unsafe_eval,
+        :report_sample,
         "#{base_url}/logs/",
         "#{base_url}/sidekiq/",
         "#{base_url}/mini-profiler-resources/",
         *script_assets
       ].tap do |sources|
-        sources << 'https://www.google-analytics.com' if SiteSetting.ga_universal_tracking_code.present?
-        sources << 'https://www.googletagmanager.com' if SiteSetting.gtm_container_id.present?
+        sources << 'https://www.google-analytics.com/analytics.js' if SiteSetting.ga_universal_tracking_code.present?
+        sources << 'https://www.googletagmanager.com/gtm.js' if SiteSetting.gtm_container_id.present?
       end
     end
 

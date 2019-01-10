@@ -31,6 +31,8 @@ required:
     default: 'Discourse'
   site_description:
     default: ''
+  short_site_description:
+    default: ''
   contact_email:
     client: true
     default: ''
@@ -210,7 +212,6 @@ basic:
     choices:
      - twitter
      - facebook
-     - google+
      - email
   desktop_category_page_style:
     client: true
@@ -283,6 +284,7 @@ basic:
     default: ''
   short_title:
     default: ''
+    max: 12
   vapid_public_key_bytes:
     default: ''
     client: true
@@ -672,6 +674,8 @@ posting:
     client: true
     default: true
   suppress_reply_when_quoting:
+    default: true
+  remove_full_quote:
     default: true
   max_reply_history:
     default: 1
@@ -1256,6 +1260,10 @@ security:
   content_security_policy_script_src:
     type: list
     default: ''
+  invalidate_inactive_admin_email_after_days:
+    default: 365
+    min: 0
+    max: 2000
 
 onebox:
   enable_flash_video_onebox: false
@@ -1403,7 +1411,7 @@ developer:
   top_topics_formula_least_likes_per_post_multiplier:
     default: 3
   rebake_old_posts_count:
-    default: 100
+    default: 80
     min: 1
   migrate_to_new_scheme:
     hidden: true
@@ -1890,3 +1898,19 @@ tags:
   force_lowercase_tags:
     default: true
     client: true
+
+dashboard:
+  dashboard_general_tab_activity_metrics:
+    client: true
+    type: list
+    list_type: compact
+    default: "page_view_total_reqs|visits|time_to_first_response|likes|flags|user_to_user_private_messages_with_replies"
+    allow_any: false
+    choices:
+      - page_view_total_reqs
+      - visits
+      - time_to_first_response
+      - likes
+      - flags
+      - user_to_user_private_messages_with_replies
+      - signups

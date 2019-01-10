@@ -1,3 +1,16 @@
+if ARGV.include?('bbcode-to-md')
+  # Replace (most) bbcode with markdown before creating posts.
+  # This will dramatically clean up the final posts in Discourse.
+  #
+  # In a temp dir:
+  #
+  # git clone https://github.com/nlalonde/ruby-bbcode-to-md.git
+  # cd ruby-bbcode-to-md
+  # gem build ruby-bbcode-to-md.gemspec
+  # gem install ruby-bbcode-to-md-*.gem
+  require 'ruby-bbcode-to-md'
+end
+
 require "pg"
 require "set"
 require "redcarpet"
@@ -66,6 +79,7 @@ class BulkImport::Base
     @uploader = ImportScripts::Uploader.new
     @html_entities = HTMLEntities.new
     @encoding = CHARSET_MAP[charset]
+    @bbcode_to_md = true if use_bbcode_to_md?
 
     @markdown = Redcarpet::Markdown.new(
       Redcarpet::Render::HTML.new(hard_wrap: true),
@@ -170,6 +184,10 @@ class BulkImport::Base
 
     puts "Loading post actions indexes..."
     @last_post_action_id = last_id(PostAction)
+  end
+
+  def use_bbcode_to_md?
+    ARGV.include?("bbcode-to-md")
   end
 
   def execute
@@ -463,6 +481,9 @@ class BulkImport::Base
     @topic_id_by_post_id[post[:id]] = post[:topic_id]
     post[:raw] = (post[:raw] || "").scrub.strip.presence || "<Empty imported post>"
     post[:raw] = process_raw post[:raw]
+    if @bbcode_to_md
+      post[:raw] = post[:raw].bbcode_to_md(false, {}, :disable, :quote) rescue post[:raw]
+    end
     post[:like_count] ||= 0
     post[:cooked] = pre_cook post[:raw]
     post[:hidden] ||= false
@@ -552,8 +573,12 @@ class BulkImport::Base
 
     # [URL]...[/URL]
     # [MP3]...[/MP3]
+    # [EMAIL]...[/EMAIL]
+    # [LEFT]...[/LEFT]
     raw.gsub!(/\[\/?URL\]/i, "")
     raw.gsub!(/\[\/?MP3\]/i, "")
+    raw.gsub!(/\[\/?EMAIL\]/i, "")
+    raw.gsub!(/\[\/?LEFT\]/i, "")
 
     # [FONT=blah] and [COLOR=blah]
     raw.gsub!(/\[FONT=.*?\](.*?)\[\/FONT\]/im, "\\1")
@@ -609,6 +634,19 @@ class BulkImport::Base
 
     # [SPOILER=Some hidden stuff]SPOILER HERE!![/SPOILER]
     raw.gsub!(/\[SPOILER="?(.+?)"?\](.+?)\[\/SPOILER\]/im) { "\n#{$1}\n[spoiler]#{$2}[/spoiler]\n" }
+
+    # convert list tags to ul and list=1 tags to ol
+    # (basically, we're only missing list=a here...)
+    # (https://meta.discourse.org/t/phpbb-3-importer-old/17397)
+    raw.gsub!(/\[list\](.*?)\[\/list\]/im, '[ul]\1[/ul]')
+    raw.gsub!(/\[list=1\](.*?)\[\/list\]/im, '[ol]\1[/ol]')
+    raw.gsub!(/\[list\](.*?)\[\/list:u\]/im, '[ul]\1[/ul]')
+    raw.gsub!(/\[list=1\](.*?)\[\/list:o\]/im, '[ol]\1[/ol]')
+    # convert *-tags to li-tags so bbcode-to-md can do its magic on phpBB's lists:
+    raw.gsub!(/\[\*\]\n/, '')
+    raw.gsub!(/\[\*\](.*?)\[\/\*:m\]/, '[li]\1[/li]')
+    raw.gsub!(/\[\*\](.*?)\n/, '[li]\1[/li]')
+    raw.gsub!(/\[\*=1\]/, '')
 
     raw
   end

@@ -29,6 +29,17 @@ shared_examples "backup store" do
         expect(store.latest_file).to be_nil
       end
     end
+
+    describe "#stats" do
+      it "works when there are no files" do
+        stats = store.stats
+
+        expect(stats[:used_bytes]).to eq(0)
+        expect(stats).to have_key(:free_bytes)
+        expect(stats[:count]).to eq(0)
+        expect(stats[:last_backup_taken_at]).to be_nil
+      end
+    end
   end
 
   context "with backup files" do
@@ -46,7 +57,7 @@ shared_examples "backup store" do
       end
 
       it "works with multisite", type: :multisite do
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           expect(store.files).to eq([backup5, backup4])
         end
       end
@@ -63,9 +74,21 @@ shared_examples "backup store" do
       end
 
       it "works with multisite", type: :multisite do
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           expect(store.latest_file).to eq(backup5)
         end
+      end
+    end
+
+    describe "#reset_cache" do
+      it "resets the storage stats report" do
+        report_type = "storage_stats"
+        report = Report.find(report_type)
+        Report.cache(report, 35.minutes)
+        expect(Report.find_cached(report_type)).to be_present
+
+        store.reset_cache
+        expect(Report.find_cached(report_type)).to be_nil
       end
     end
 
@@ -87,7 +110,7 @@ shared_examples "backup store" do
       it "works with multisite", type: :multisite do
         SiteSetting.maximum_backups = 1
 
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           store.delete_old
           expect(store.files).to eq([backup5])
         end
@@ -109,7 +132,7 @@ shared_examples "backup store" do
       end
 
       it "works with multisite", type: :multisite do
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           file = store.file(backup4.filename, include_download_source: true)
           expect(file.source).to match(source_regex("second", backup4.filename, multisite: true))
         end
@@ -130,7 +153,7 @@ shared_examples "backup store" do
       end
 
       it "works with multisite", type: :multisite do
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           expect(store.files).to include(backup5)
           store.delete_file(backup5.filename)
           expect(store.files).to_not include(backup5)
@@ -159,11 +182,22 @@ shared_examples "backup store" do
       end
 
       it "works with multisite", type: :multisite do
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           expect(store.files).to include(backup5)
           store.delete_file(backup5.filename)
           expect(store.files).to_not include(backup5)
         end
+      end
+    end
+
+    describe "#stats" do
+      it "returns the correct stats" do
+        stats = store.stats
+
+        expect(stats[:used_bytes]).to eq(57)
+        expect(stats).to have_key(:free_bytes)
+        expect(stats[:count]).to eq(3)
+        expect(stats[:last_backup_taken_at]).to eq(Time.parse("2018-09-13T15:10:00Z"))
       end
     end
   end
@@ -205,7 +239,7 @@ shared_examples "remote backup store" do
       end
 
       it "works with multisite", type: :multisite do
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           upload_file
         end
       end
@@ -232,7 +266,7 @@ shared_examples "remote backup store" do
       end
 
       it "works with multisite", type: :multisite do
-        RailsMultisite::ConnectionManagement.with_connection("second") do
+        test_multisite_connection("second") do
           filename = "foo.tar.gz"
           url = store.generate_upload_url(filename)
 
