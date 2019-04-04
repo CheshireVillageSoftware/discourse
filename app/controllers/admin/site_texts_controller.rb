@@ -1,3 +1,6 @@
+require_dependency 'seed_data/categories'
+require_dependency 'seed_data/topics'
+
 class Admin::SiteTextsController < Admin::AdminController
 
   def self.preferred_keys
@@ -43,7 +46,8 @@ class Admin::SiteTextsController < Admin::AdminController
       end
     end
 
-    render_serialized(results[0..50], SiteTextSerializer, root: 'site_texts', rest_serializer: true, extras: extras)
+    extras[:has_more] = true if results.size > 50
+    render_serialized(results[0..49], SiteTextSerializer, root: 'site_texts', rest_serializer: true, extras: extras)
   end
 
   def show
@@ -77,6 +81,31 @@ class Admin::SiteTextsController < Admin::AdminController
     render_serialized(site_text, SiteTextSerializer, root: 'site_text', rest_serializer: true)
   end
 
+  def get_reseed_options
+    render_json_dump(
+      categories: SeedData::Categories.with_default_locale.reseed_options,
+      topics: SeedData::Topics.with_default_locale.reseed_options
+    )
+  end
+
+  def reseed
+    hijack do
+      if params[:category_ids].present?
+        SeedData::Categories.with_default_locale.update(
+          site_setting_names: params[:category_ids]
+        )
+      end
+
+      if params[:topic_ids].present?
+        SeedData::Topics.with_default_locale.update(
+          site_setting_names: params[:topic_ids]
+        )
+      end
+
+      render json: success_json
+    end
+  end
+
   protected
 
   def record_for(k, value = nil)
@@ -90,7 +119,8 @@ class Admin::SiteTextsController < Admin::AdminController
   end
 
   def find_site_text
-    raise Discourse::NotFound unless I18n.exists?(params[:id]) && !self.class.restricted_keys.include?(params[:id])
+    raise Discourse::NotFound unless I18n.exists?(params[:id])
+    raise Discourse::InvalidAccess.new(nil, nil, custom_message: 'email_template_cant_be_modified') if self.class.restricted_keys.include?(params[:id])
     record_for(params[:id])
   end
 

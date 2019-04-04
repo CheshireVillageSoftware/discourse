@@ -8,13 +8,14 @@
   align-items: center;
   background-color: $secondary;
   margin: 0 0 3px;
-  .d-icon {
-    margin-right: 0.25em;
-  }
 
   img {
     height: 16px;
     width: 16px;
+  }
+
+  .badge-display-name {
+    margin-left: 0.25em;
   }
 
   &.badge-type-gold .fa {
@@ -146,14 +147,10 @@
     display: flex;
     min-height: 128px;
     height: 100%;
+    padding: 0 10%;
 
     .badge-link {
-      display: flex;
-      flex: 1 1 auto;
-      padding: 0 10%;
-      @include breakpoint(mobile) {
-        padding: 0 5%;
-      }
+      color: $primary;
     }
 
     .badge-icon {
@@ -206,7 +203,7 @@
   &.medium {
     flex: 0 0 auto;
     width: 32%;
-    margin-right: calc(2% - 3px);
+    margin-right: 1.63%;
     @media screen and (min-width: 851px) {
       &:nth-of-type(3n) {
         margin-right: 0;
@@ -236,12 +233,9 @@
       margin-right: 1.5em;
     }
     .badge-contents {
-      .badge-link {
-        padding: 0 5%;
-        width: 90%;
-        h3 {
-          font-size: $font-up-3;
-        }
+      padding: 0 5%;
+      h3 {
+        font-size: $font-up-3;
       }
     }
   }
@@ -327,7 +321,7 @@
 
 .check-display {
   display: inline-block;
-  width: 18px;
+  padding: 0 0.25em;
   border-radius: 10px;
   text-align: center;
   .fa {

@@ -724,6 +724,20 @@ describe GroupsController do
         .to contain_exactly(user1.id, user2.id, user3.id)
     end
 
+    it "can show group requests" do
+      sign_in(Fabricate(:admin))
+
+      user4 = Fabricate(:user)
+      request4 = Fabricate(:group_request, user: user4, group: group)
+
+      get "/groups/#{group.name}/members.json", params: { requesters: true }
+
+      members = JSON.parse(response.body)["members"]
+      expect(members.length).to eq(1)
+      expect(members.first["username"]).to eq(user4.username)
+      expect(members.first["reason"]).to eq(request4.reason)
+    end
+
     describe 'filterable' do
       describe 'as a normal user' do
         it "should not allow members to be filterable by email" do
@@ -1017,6 +1031,15 @@ describe GroupsController do
           expect(response.status).to eq(200)
         end
 
+        it "removes by id with integer in json" do
+          expect do
+            headers = { "CONTENT_TYPE": "application/json" }
+            delete "/groups/#{group.id}/members.json", params: "{\"user_id\":#{user.id}}", headers: headers
+          end.to change { group.users.count }.by(-1)
+
+          expect(response.status).to eq(200)
+        end
+
         it "removes by username" do
           expect do
             delete "/groups/#{group.id}/members.json", params: { username: user.username }
@@ -1098,6 +1121,15 @@ describe GroupsController do
               delete "/groups/#{group1.id}/members.json",
                 params: { user_ids: [user1.id, user2.id].join(",") }
             end.to change { group1.users.count }.by(-2)
+
+            expect(response.status).to eq(200)
+          end
+
+          it "removes by id with integer in json" do
+            expect do
+              headers = { "CONTENT_TYPE": "application/json" }
+              delete "/groups/#{group1.id}/members.json", params: "{\"user_ids\":#{user1.id}}", headers: headers
+            end.to change { group1.users.count }.by(-1)
 
             expect(response.status).to eq(200)
           end
@@ -1266,7 +1298,7 @@ describe GroupsController do
         group_name: group.name
       ))
 
-      expect(post.raw).to eq('Please add me in')
+      expect(post.raw).to start_with('Please add me in')
       expect(topic.archetype).to eq(Archetype.private_message)
       expect(topic.allowed_users).to contain_exactly(user, owner1, owner2)
       expect(topic.allowed_groups).to eq([])

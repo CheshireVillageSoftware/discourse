@@ -42,6 +42,9 @@
       }
     }
   }
+  .category-heading {
+    max-width: 100%;
+  }
 }
 
 .topic-list-item.visited,
@@ -115,15 +118,12 @@
     vertical-align: middle;
   }
   th {
-    color: dark-light-choose($primary-medium, $secondary-medium);
-    font-weight: normal;
-    font-size: $font-0;
     button .d-icon {
-      color: dark-light-choose($primary-medium, $secondary-medium);
+      color: $primary-medium;
     }
   }
   td {
-    color: dark-light-choose($primary-medium, $secondary-medium);
+    color: $primary-medium;
     font-size: $font-0;
   }
 
@@ -273,6 +273,9 @@ ol.category-breadcrumb {
 
 div.education {
   color: dark-light-choose($primary-medium, $secondary-medium);
+  .badge-notification.new-posts {
+    vertical-align: text-bottom;
+  }
 }
 
 .list-cell {
@@ -296,4 +299,6 @@ div.education {
 //     right *
 .topic-post-badges {
   white-space: nowrap;
+  align-self: center;
+  line-height: $line-height-medium;
 }

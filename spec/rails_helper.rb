@@ -70,6 +70,7 @@ RSpec.configure do |config|
   config.include MessageBus
   config.include RSpecHtmlMatchers
   config.include IntegrationHelpers, type: :request
+  config.include SiteSettingsHelpers
   config.mock_framework = :mocha
   config.order = 'random'
   config.infer_spec_type_from_file_location!
@@ -154,7 +155,7 @@ RSpec.configure do |config|
     RateLimiter.disable
     PostActionNotifier.disable
     SearchIndexer.disable
-    UserActionCreator.disable
+    UserActionManager.disable
     NotificationEmailer.disable
 
     SiteSetting.provider.all.each do |setting|
@@ -175,18 +176,24 @@ RSpec.configure do |config|
       $test_cleanup_callbacks.reverse_each(&:call)
       $test_cleanup_callbacks = nil
     end
+
+    # Running jobs are expensive and most of our tests are not concern with
+    # code that runs inside jobs. run_later! means they are put on the redis
+    # queue and never processed.
+    Jobs.run_later!
   end
 
   config.before(:each, type: :multisite) do
     Rails.configuration.multisite = true
+
     RailsMultisite::ConnectionManagement.config_filename =
       "spec/fixtures/multisite/two_dbs.yml"
   end
 
   config.after(:each, type: :multisite) do
+    ActiveRecord::Base.clear_all_connections!
     Rails.configuration.multisite = false
     RailsMultisite::ConnectionManagement.clear_settings!
-    ActiveRecord::Base.clear_active_connections!
     ActiveRecord::Base.establish_connection
   end
 
@@ -208,13 +215,18 @@ RSpec.configure do |config|
   # force a rollback after using a multisite connection.
   def test_multisite_connection(name)
     RailsMultisite::ConnectionManagement.with_connection(name) do
+      spec_exception = nil
+
       ActiveRecord::Base.transaction do
         begin
           yield
+        rescue Exception => spec_exception
         ensure
-          throw raise ActiveRecord::Rollback
+          raise ActiveRecord::Rollback
         end
       end
+
+      raise spec_exception if spec_exception
     end
   end
 
@@ -266,8 +278,17 @@ def set_cdn_url(cdn_url)
 end
 
 def freeze_time(now = Time.now)
-  datetime = DateTime.parse(now.to_s)
-  time = Time.parse(now.to_s)
+  time = now
+  datetime = now
+
+  if Time === now
+    datetime = now.to_datetime
+  elsif DateTime === now
+    time = now.to_time
+  else
+    datetime = DateTime.parse(now.to_s)
+    time = Time.parse(now.to_s)
+  end
 
   if block_given?
     raise "nested freeze time not supported" if TrackTimeStub.stubbed

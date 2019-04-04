@@ -13,7 +13,7 @@ export default Ember.Component.extend(LoadMore, {
   classNames: ["user-stream"],
 
   _scrollTopOnModelChange: function() {
-    Em.run.schedule("afterRender", () => $(document).scrollTop(0));
+    Ember.run.schedule("afterRender", () => $(document).scrollTop(0));
   }.observes("stream.user.id"),
 
   _inserted: function() {
@@ -56,9 +56,11 @@ export default Ember.Component.extend(LoadMore, {
   actions: {
     removeBookmark(userAction) {
       const stream = this.get("stream");
-      Post.updateBookmark(userAction.get("post_id"), false).then(() => {
-        stream.remove(userAction);
-      });
+      Post.updateBookmark(userAction.get("post_id"), false)
+        .then(() => {
+          stream.remove(userAction);
+        })
+        .catch(popupAjaxError);
     },
 
     resumeDraft(item) {

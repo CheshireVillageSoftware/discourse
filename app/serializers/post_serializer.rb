@@ -70,6 +70,8 @@ class PostSerializer < BasicPostSerializer
              :is_auto_generated,
              :action_code,
              :action_code_who,
+             :post_notice_type,
+             :post_notice_time,
              :last_wiki_edit,
              :locked,
              :excerpt
@@ -255,7 +257,7 @@ class PostSerializer < BasicPostSerializer
         summary[:can_defer_flags] = true if scope.is_staff? &&
                                                    PostActionType.flag_types_without_custom.values.include?(id) &&
                                                    active_flags.present? && active_flags.has_key?(id) &&
-                                                   active_flags[id].count > 0
+                                                   active_flags[id] > 0
       end
 
       if actions.present? && actions.has_key?(id)
@@ -361,6 +363,26 @@ class PostSerializer < BasicPostSerializer
 
   def include_action_code_who?
     include_action_code? && action_code_who.present?
+  end
+
+  def post_notice_type
+    post_custom_fields["post_notice_type"]
+  end
+
+  def include_post_notice_type?
+    return false if !scope.user || !scope.user.id || scope.user.id == object.user_id ||
+                    !object.user || object.user.anonymous? || object.user.bot? ||
+                    !scope.user.has_trust_level?(SiteSetting.min_post_notice_tl)
+
+    post_notice_type.present?
+  end
+
+  def post_notice_time
+    post_custom_fields["post_notice_time"]
+  end
+
+  def include_post_notice_time?
+    include_post_notice_type? && post_notice_time.present?
   end
 
   def locked

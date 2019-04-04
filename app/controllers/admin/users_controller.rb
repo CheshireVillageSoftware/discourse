@@ -6,7 +6,6 @@ class Admin::UsersController < Admin::AdminController
 
   before_action :fetch_user, only: [:suspend,
                                     :unsuspend,
-                                    :refresh_browsers,
                                     :log_out,
                                     :revoke_admin,
                                     :grant_admin,
@@ -32,12 +31,13 @@ class Admin::UsersController < Admin::AdminController
   def index
     users = ::AdminUserIndexQuery.new(params).find_users
 
+    opts = {}
     if params[:show_emails] == "true"
-      guardian.can_see_emails = true
-      StaffActionLogger.new(current_user).log_show_emails(users)
+      StaffActionLogger.new(current_user).log_show_emails(users, context: request.path)
+      opts[:emails_desired] = true
     end
 
-    render_serialized(users, AdminUserListSerializer)
+    render_serialized(users, AdminUserListSerializer, opts)
   end
 
   def show
@@ -174,11 +174,6 @@ class Admin::UsersController < Admin::AdminController
     end
   end
 
-  def refresh_browsers
-    refresh_browser @user
-    render body: nil
-  end
-
   def revoke_admin
     guardian.ensure_can_revoke_admin!(@user)
     @user.revoke_admin!
@@ -293,15 +288,14 @@ class Admin::UsersController < Admin::AdminController
   end
 
   def approve
-    guardian.ensure_can_approve!(@user)
-    @user.approve(current_user)
+    Discourse.deprecate("AdminUsersController#approve is deprecated. Please use the Reviewable API instead.", since: "2.3.0beta5", drop_from: "2.4")
+    Reviewable.bulk_perform_targets(current_user, :approve, 'ReviewableUser', [@user.id])
     render body: nil
   end
 
   def approve_bulk
-    User.where(id: params[:users]).each do |u|
-      u.approve(current_user) if guardian.can_approve?(u)
-    end
+    Discourse.deprecate("AdminUsersController#approve_bulk is deprecated. Please use the Reviewable API instead.", since: "2.3.0beta5", drop_from: "2.4")
+    Reviewable.bulk_perform_targets(current_user, :approve, 'ReviewableUser', params[:users])
     render body: nil
   end
 
@@ -316,7 +310,7 @@ class Admin::UsersController < Admin::AdminController
 
   def deactivate
     guardian.ensure_can_deactivate!(@user)
-    @user.deactivate
+    @user.deactivate(current_user)
     StaffActionLogger.new(current_user).log_user_deactivate(@user, I18n.t('user.deactivated_by_staff'), params.slice(:context))
     refresh_browser @user
     render body: nil
@@ -371,7 +365,10 @@ class Admin::UsersController < Admin::AdminController
     )
   end
 
+  # Kept for backwards compatibility, but is replaced by the Reviewable Queue
   def reject_bulk
+    Discourse.deprecate("AdminUsersController#reject_bulk is deprecated. Please use the Reviewable API instead.", since: "2.3.0beta5", drop_from: "2.4")
+
     success_count = 0
     d = UserDestroyer.new(current_user)
 
@@ -408,6 +405,7 @@ class Admin::UsersController < Admin::AdminController
 
     options = params.slice(:block_email, :block_urls, :block_ip, :context, :delete_as_spammer)
     options[:delete_posts] = ActiveModel::Type::Boolean.new.cast(params[:delete_posts])
+    options[:prepare_for_destroy] = true
 
     hijack do
       begin

@@ -226,14 +226,6 @@ const AdminUser = Discourse.User.extend({
       .catch(popupAjaxError);
   },
 
-  refreshBrowsers() {
-    return ajax("/admin/users/" + this.get("id") + "/refresh_browsers", {
-      type: "POST"
-    }).finally(() =>
-      bootbox.alert(I18n.t("admin.user.refresh_browsers_message"))
-    );
-  },
-
   approve() {
     const self = this;
     return ajax("/admin/users/" + this.get("id") + "/approve", {
@@ -305,7 +297,7 @@ const AdminUser = Discourse.User.extend({
     return this.get("trust_level") < 4;
   }.property("trust_level"),
 
-  canSuspend: Em.computed.not("staff"),
+  canSuspend: Ember.computed.not("staff"),
 
   suspendDuration: function() {
     const suspended_at = moment(this.suspended_at),
@@ -581,36 +573,6 @@ const AdminUser = Discourse.User.extend({
 });
 
 AdminUser.reopenClass({
-  bulkApprove(users) {
-    users.forEach(user => {
-      user.setProperties({
-        approved: true,
-        can_approve: false,
-        selected: false
-      });
-    });
-
-    return ajax("/admin/users/approve-bulk", {
-      type: "PUT",
-      data: { users: users.map(u => u.id) }
-    }).finally(() => bootbox.alert(I18n.t("admin.user.approve_bulk_success")));
-  },
-
-  bulkReject(users) {
-    users.forEach(user => {
-      user.set("can_approve", false);
-      user.set("selected", false);
-    });
-
-    return ajax("/admin/users/reject-bulk", {
-      type: "DELETE",
-      data: {
-        users: users.map(u => u.id),
-        context: window.location.pathname
-      }
-    });
-  },
-
   find(user_id) {
     return ajax("/admin/users/" + user_id + ".json").then(result => {
       result.loadedDetails = true;

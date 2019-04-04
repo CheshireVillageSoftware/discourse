@@ -1494,14 +1494,14 @@ describe UsersController do
           put "/u/#{user.username}.json", params: {
             muted_usernames: "",
             theme_ids: [theme.id],
-            email_direct: false
+            email_level: UserOption.email_level_types[:always]
           }
 
           user.reload
 
           expect(user.muted_users.pluck(:username).sort).to be_empty
           expect(user.user_option.theme_ids).to eq([theme.id])
-          expect(user.user_option.email_direct).to eq(false)
+          expect(user.user_option.email_level).to eq(UserOption.email_level_types[:always])
         end
 
         context 'a locale is chosen that differs from I18n.locale' do
@@ -2020,6 +2020,75 @@ describe UsersController do
     end
   end
 
+  describe '#ignore' do
+    it 'raises an error when not logged in' do
+      put "/u/#{user.username}/notification_level.json", params: { notification_level: "" }
+      expect(response.status).to eq(403)
+    end
+
+    context 'while logged in' do
+      let(:user) { Fabricate(:user, trust_level: 2) }
+      let(:another_user) { Fabricate(:user) }
+      before do
+        sign_in(user)
+      end
+
+      context 'when ignore_user_enable is OFF' do
+        it 'raises an error when not logged in' do
+          put "/u/#{another_user.username}/notification_level.json", params: { notification_level: "" }
+          expect(response.status).to eq(404)
+        end
+      end
+
+      context 'when ignore_user_enable is ON' do
+        before do
+          SiteSetting.ignore_user_enabled = true
+        end
+
+        let!(:ignored_user) { Fabricate(:ignored_user, user: user, ignored_user: another_user) }
+        let!(:muted_user) { Fabricate(:muted_user, user: user, muted_user: another_user) }
+
+        context 'when changing notification level to normal' do
+          it 'changes notification level to normal' do
+            put "/u/#{another_user.username}/notification_level.json", params: { notification_level: "normal" }
+            expect(IgnoredUser.count).to eq(0)
+            expect(MutedUser.count).to eq(0)
+          end
+        end
+
+        context 'when changing notification level to mute' do
+          it 'changes notification level to mute' do
+            put "/u/#{another_user.username}/notification_level.json", params: { notification_level: "mute" }
+            expect(IgnoredUser.count).to eq(0)
+            expect(MutedUser.find_by(user_id: user.id, muted_user_id: another_user.id)).to be_present
+          end
+        end
+
+        context 'when changing notification level to ignore' do
+          it 'changes notification level to ignore' do
+            put "/u/#{another_user.username}/notification_level.json", params: { notification_level: "ignore" }
+            expect(MutedUser.count).to eq(0)
+            expect(IgnoredUser.find_by(user_id: user.id, ignored_user_id: another_user.id)).to be_present
+          end
+
+          context 'when expiring_at param is set' do
+            it 'changes notification level to ignore' do
+              freeze_time(Time.now) do
+                expiring_at = 3.days.from_now
+                put "/u/#{another_user.username}/notification_level.json", params: { notification_level: "ignore", expiring_at: expiring_at }
+
+                ignored_user = IgnoredUser.find_by(user_id: user.id, ignored_user_id: another_user.id)
+                expect(ignored_user).to be_present
+                expect(ignored_user.expiring_at.to_i).to eq(expiring_at.to_i)
+                expect(MutedUser.count).to eq(0)
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
   describe "for user with period in username" do
     let(:user_with_period) { Fabricate(:user, username: "myname.test") }
 
@@ -2070,6 +2139,19 @@ describe UsersController do
         sign_in(Fabricate(:user))
         get "/u/#{Fabricate(:user).username}/emails.json"
         expect(response).to be_forbidden
+      end
+
+      it "returns emails and associated_accounts for self" do
+        user = Fabricate(:user)
+        sign_in(user)
+
+        get "/u/#{user.username}/emails.json"
+
+        expect(response.status).to eq(200)
+        json = JSON.parse(response.body)
+        expect(json["email"]).to eq(user.email)
+        expect(json["secondary_emails"]).to eq(user.secondary_emails)
+        expect(json["associated_accounts"]).to eq([])
       end
 
       it "returns emails and associated_accounts when you're allowed to see them" do
@@ -2789,7 +2871,8 @@ describe UsersController do
         Fabricate(:group,
           mentionable_level: 99,
           messageable_level: 0,
-          visibility_level: 0
+          visibility_level: 0,
+          name: 'aaa1'
         )
       end
 
@@ -2797,14 +2880,16 @@ describe UsersController do
         Fabricate(:group,
           mentionable_level: 99,
           messageable_level: 0,
-          visibility_level: 1
+          visibility_level: 1,
+          name: 'aaa2'
         )
       end
 
       let!(:messageable_group) do
         Fabricate(:group,
           mentionable_level: 0,
-          messageable_level: 99
+          messageable_level: 99,
+          name: 'aaa3'
         )
       end
 
@@ -2813,8 +2898,17 @@ describe UsersController do
           sign_in(user)
         end
 
-        it "only returns visible groups" do
+        it "does not search for groups if there is no term" do
           get "/u/search/users.json", params: { include_groups: "true" }
+
+          expect(response.status).to eq(200)
+
+          groups = JSON.parse(response.body)["groups"]
+          expect(groups).to eq(nil)
+        end
+
+        it "only returns visible groups" do
+          get "/u/search/users.json", params: { include_groups: "true", term: 'a' }
 
           expect(response.status).to eq(200)
 
@@ -2827,7 +2921,8 @@ describe UsersController do
         it "doesn't search for groups" do
           get "/u/search/users.json", params: {
             include_mentionable_groups: 'false',
-            include_messageable_groups: 'false'
+            include_messageable_groups: 'false',
+            term: 'a'
           }
 
           expect(response.status).to eq(200)
@@ -2837,7 +2932,8 @@ describe UsersController do
         it "searches for messageable groups" do
           get "/u/search/users.json", params: {
             include_mentionable_groups: 'false',
-            include_messageable_groups: 'true'
+            include_messageable_groups: 'true',
+            term: 'a'
           }
 
           expect(response.status).to eq(200)
@@ -2849,7 +2945,8 @@ describe UsersController do
         it 'searches for mentionable groups' do
           get "/u/search/users.json", params: {
             include_messageable_groups: 'false',
-            include_mentionable_groups: 'true'
+            include_mentionable_groups: 'true',
+            term: 'a'
           }
 
           expect(response.status).to eq(200)
@@ -2865,7 +2962,8 @@ describe UsersController do
         it 'should not include mentionable/messageable groups' do
           get "/u/search/users.json", params: {
             include_mentionable_groups: 'false',
-            include_messageable_groups: 'false'
+            include_messageable_groups: 'false',
+            term: 'a'
           }
 
           expect(response.status).to eq(200)
@@ -2873,7 +2971,8 @@ describe UsersController do
 
           get "/u/search/users.json", params: {
             include_mentionable_groups: 'false',
-            include_messageable_groups: 'true'
+            include_messageable_groups: 'true',
+            term: 'a'
           }
 
           expect(response.status).to eq(200)
@@ -2881,7 +2980,8 @@ describe UsersController do
 
           get "/u/search/users.json", params: {
             include_messageable_groups: 'false',
-            include_mentionable_groups: 'true'
+            include_mentionable_groups: 'true',
+            term: 'a'
           }
 
           expect(response.status).to eq(200)
@@ -3076,6 +3176,7 @@ describe UsersController do
             put "/users/second_factor.json", params: {
               second_factor_token: '000000',
               second_factor_method: UserSecondFactor.methods[:totp],
+              second_factor_target: UserSecondFactor.methods[:totp],
               enable: 'true',
             }
 
@@ -3091,8 +3192,9 @@ describe UsersController do
           it 'should allow second factor for the user to be enabled' do
             put "/users/second_factor.json", params: {
               second_factor_token: ROTP::TOTP.new(user_second_factor.data).now,
-              enable: 'true',
-              second_factor_method: UserSecondFactor.methods[:totp]
+              second_factor_method: UserSecondFactor.methods[:totp],
+              second_factor_target: UserSecondFactor.methods[:totp],
+              enable: 'true'
             }
 
             expect(response.status).to eq(200)
@@ -3102,7 +3204,8 @@ describe UsersController do
           it 'should allow second factor for the user to be disabled' do
             put "/users/second_factor.json", params: {
               second_factor_token: ROTP::TOTP.new(user_second_factor.data).now,
-              second_factor_method: UserSecondFactor.methods[:totp]
+              second_factor_method: UserSecondFactor.methods[:totp],
+              second_factor_target: UserSecondFactor.methods[:totp]
             }
 
             expect(response.status).to eq(200)
@@ -3115,7 +3218,7 @@ describe UsersController do
         context 'when token is missing' do
           it 'returns the right response' do
             put "/users/second_factor.json", params: {
-              second_factor_method: UserSecondFactor.methods[:backup_codes],
+              second_factor_target: UserSecondFactor.methods[:backup_codes]
             }
 
             expect(response.status).to eq(400)
@@ -3126,7 +3229,8 @@ describe UsersController do
           it 'returns the right response' do
             put "/users/second_factor.json", params: {
               second_factor_token: '000000',
-              second_factor_method: UserSecondFactor.methods[:backup_codes],
+              second_factor_method: UserSecondFactor.methods[:totp],
+              second_factor_target: UserSecondFactor.methods[:backup_codes]
             }
 
             expect(response.status).to eq(200)
@@ -3141,7 +3245,8 @@ describe UsersController do
           it 'should allow second factor backup for the user to be disabled' do
             put "/users/second_factor.json", params: {
               second_factor_token: ROTP::TOTP.new(user_second_factor.data).now,
-              second_factor_method: UserSecondFactor.methods[:backup_codes]
+              second_factor_method: UserSecondFactor.methods[:totp],
+              second_factor_target: UserSecondFactor.methods[:backup_codes]
             }
 
             expect(response.status).to eq(200)
@@ -3158,7 +3263,8 @@ describe UsersController do
     context 'when not logged in' do
       it 'should return the right response' do
         put "/users/second_factors_backup.json", params: {
-          second_factor_token: 'wrongtoken'
+          second_factor_token: 'wrongtoken',
+          second_factor_method: UserSecondFactor.methods[:totp]
         }
 
         expect(response.status).to eq(403)
@@ -3173,7 +3279,8 @@ describe UsersController do
       describe 'create 2fa request' do
         it 'fails on incorrect password' do
           put "/users/second_factors_backup.json", params: {
-            second_factor_token: 'wrongtoken'
+            second_factor_token: 'wrongtoken',
+            second_factor_method: UserSecondFactor.methods[:totp]
           }
 
           expect(response.status).to eq(200)
@@ -3188,7 +3295,8 @@ describe UsersController do
             SiteSetting.enable_local_logins = false
 
             put "/users/second_factors_backup.json", params: {
-              second_factor_token: ROTP::TOTP.new(user_second_factor.data).now
+              second_factor_token: ROTP::TOTP.new(user_second_factor.data).now,
+              second_factor_method: UserSecondFactor.methods[:totp]
             }
 
             expect(response.status).to eq(404)
@@ -3201,7 +3309,8 @@ describe UsersController do
             SiteSetting.enable_sso = true
 
             put "/users/second_factors_backup.json", params: {
-              second_factor_token: ROTP::TOTP.new(user_second_factor.data).now
+              second_factor_token: ROTP::TOTP.new(user_second_factor.data).now,
+              second_factor_method: UserSecondFactor.methods[:totp]
             }
 
             expect(response.status).to eq(404)
@@ -3212,7 +3321,8 @@ describe UsersController do
           user_second_factor
 
           put "/users/second_factors_backup.json", params: {
-            second_factor_token: ROTP::TOTP.new(user_second_factor.data).now
+            second_factor_token: ROTP::TOTP.new(user_second_factor.data).now,
+            second_factor_method: UserSecondFactor.methods[:totp]
           }
 
           expect(response.status).to eq(200)

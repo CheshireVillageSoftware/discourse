@@ -56,7 +56,11 @@ RSpec.describe Admin::UsersController do
   end
 
   describe '#approve' do
-    let(:evil_trout) { Fabricate(:evil_trout, approved: false) }
+    before do
+      SiteSetting.must_approve_users = true
+    end
+
+    let(:evil_trout) { Fabricate(:evil_trout) }
 
     it "raises an error when the user doesn't have permission" do
       sign_in(user)
@@ -67,15 +71,22 @@ RSpec.describe Admin::UsersController do
     end
 
     it 'calls approve' do
+      Jobs.run_immediately!
+      evil_trout.activate
       put "/admin/users/#{evil_trout.id}/approve.json"
       expect(response.status).to eq(200)
       evil_trout.reload
       expect(evil_trout.approved).to eq(true)
+      expect(UserHistory.where(action: UserHistory.actions[:approve_user], target_user_id: evil_trout.id).count).to eq(1)
     end
   end
 
   describe '#approve_bulk' do
-    let(:evil_trout) { Fabricate(:evil_trout, approved: false) }
+    before do
+      SiteSetting.must_approve_users = true
+    end
+
+    let(:evil_trout) { Fabricate(:evil_trout) }
 
     it "does nothing without uesrs" do
       put "/admin/users/approve-bulk.json"
@@ -93,6 +104,8 @@ RSpec.describe Admin::UsersController do
     end
 
     it "approves the user when permitted" do
+      Jobs.run_immediately!
+      evil_trout.activate
       put "/admin/users/approve-bulk.json", params: { users: [evil_trout.id] }
       expect(response.status).to eq(200)
       evil_trout.reload

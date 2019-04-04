@@ -199,8 +199,8 @@ class UserNotifications < ActionMailer::Base
       end
 
       # Try to find 3 interesting stats for the top of the digest
+      new_topics_count = Topic.for_digest(user, min_date).count
 
-      new_topics_count = Topic.new_since_last_seen(user, min_date).count
       if new_topics_count == 0
         # We used topics from new users instead, so count should match
         new_topics_count = topics_for_digest.size
@@ -408,8 +408,25 @@ class UserNotifications < ActionMailer::Base
     allow_reply_by_email = opts[:allow_reply_by_email] unless user.suspended?
     original_username = notification_data[:original_username] || notification_data[:display_username]
 
+    if user.staged && post
+      original_subject = IncomingEmail.joins(:post)
+        .where("posts.topic_id = ? AND posts.post_number = 1", post.topic_id)
+        .pluck(:subject)
+        .first
+    end
+
+    if original_subject
+      topic_title = original_subject
+      opts[:use_site_subject] = false
+      opts[:add_re_to_subject] = true
+      use_topic_title_subject = true
+    else
+      topic_title = notification_data[:topic_title]
+      use_topic_title_subject = false
+    end
+
     email_options = {
-      title: notification_data[:topic_title],
+      title: topic_title,
       post: post,
       username: original_username,
       from_alias: I18n.t('email_from', user_name: user_name, site_name: Email.site_title),
@@ -421,6 +438,7 @@ class UserNotifications < ActionMailer::Base
       show_group_in_subject: opts[:show_group_in_subject],
       notification_type: notification_type,
       use_invite_template: opts[:use_invite_template],
+      use_topic_title_subject: use_topic_title_subject,
       user: user
     }
 
@@ -438,6 +456,7 @@ class UserNotifications < ActionMailer::Base
     allow_reply_by_email = opts[:allow_reply_by_email]
     use_site_subject = opts[:use_site_subject]
     add_re_to_subject = opts[:add_re_to_subject] && post.post_number > 1
+    use_topic_title_subject = opts[:use_topic_title_subject]
     username = opts[:username]
     from_alias = opts[:from_alias]
     notification_type = opts[:notification_type]
@@ -622,6 +641,7 @@ class UserNotifications < ActionMailer::Base
       participants: participants,
       include_respond_instructions: !(user.suspended? || user.staged?),
       template: template,
+      use_topic_title_subject: use_topic_title_subject,
       site_description: SiteSetting.site_description,
       site_title: SiteSetting.title,
       site_title_url_encoded: URI.encode(SiteSetting.title),

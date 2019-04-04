@@ -572,19 +572,17 @@ RSpec.describe TopicsController do
       expect(response.status).to eq(403)
     end
 
-    [:moderator, :trust_level_4].each do |user|
-      describe "forbidden to #{user}" do
-        let!(user) { sign_in(Fabricate(user)) }
+    describe "forbidden to trust_level_4" do
+      let!(:trust_level_4) { sign_in(Fabricate(:trust_level_4)) }
 
-        it 'correctly denies' do
-          put "/t/1/change-timestamp.json", params: params
-          expect(response).to be_forbidden
-        end
+      it 'correctly denies' do
+        put "/t/1/change-timestamp.json", params: params
+        expect(response).to be_forbidden
       end
     end
 
     describe 'changing timestamps' do
-      let!(:admin) { sign_in(Fabricate(:admin)) }
+      let!(:moderator) { sign_in(Fabricate(:moderator)) }
       let(:old_timestamp) { Time.zone.now }
       let(:new_timestamp) { old_timestamp - 1.day }
       let!(:topic) { Fabricate(:topic, created_at: old_timestamp) }
@@ -604,6 +602,18 @@ RSpec.describe TopicsController do
         expect(topic.reload.created_at).to be_within_one_second_of(new_timestamp)
         expect(p1.reload.created_at).to be_within_one_second_of(new_timestamp)
         expect(p2.reload.created_at).to be_within_one_second_of(old_timestamp)
+      end
+
+      it 'should create a staff log entry' do
+        put "/t/#{topic.id}/change-timestamp.json", params: {
+          timestamp: new_timestamp.to_f
+        }
+
+        log = UserHistory.last
+        expect(log.acting_user_id).to eq(moderator.id)
+        expect(log.topic_id).to eq(topic.id)
+        expect(log.new_value).to eq(new_timestamp.utc.to_s)
+        expect(log.previous_value).to eq(old_timestamp.utc.to_s)
       end
     end
   end
@@ -823,7 +833,7 @@ RSpec.describe TopicsController do
     describe 'when logged in' do
       let(:user) { Fabricate(:user) }
       let(:moderator) { Fabricate(:moderator) }
-      let(:topic) { Fabricate(:topic, user: user) }
+      let(:topic) { Fabricate(:topic, user: user, created_at: 48.hours.ago) }
       let!(:post) { Fabricate(:post, topic: topic, user: user, post_number: 1) }
 
       describe 'without access' do
@@ -998,6 +1008,68 @@ RSpec.describe TopicsController do
 
               expect(response.status).to eq(200)
             end
+          end
+        end
+
+        context 'updating to a category with restricted tags' do
+          let!(:category) { Fabricate(:category) }
+          let!(:restricted_category) { Fabricate(:category) }
+          let!(:tag1) { Fabricate(:tag) }
+          let!(:tag2) { Fabricate(:tag) }
+          let!(:tag_group_1) { Fabricate(:tag_group, tag_names: [tag1.name]) }
+          let!(:tag_group_2) { Fabricate(:tag_group) }
+
+          before do
+            SiteSetting.tagging_enabled = true
+            topic.update!(tags: [tag1])
+          end
+
+          it 'can’t change to a category disallowing this topic current tags' do
+            restricted_category.allowed_tags = [tag2.name]
+
+            put "/t/#{topic.slug}/#{topic.id}.json", params: { category_id: restricted_category.id }
+
+            result = ::JSON.parse(response.body)
+
+            expect(response.status).to eq(422)
+            expect(result['errors']).to be_present
+            expect(topic.reload.category_id).not_to eq(restricted_category.id)
+          end
+
+          it 'can’t change to a category disallowing this topic current tag (through tag_group)' do
+            tag_group_2.tags = [tag2]
+            restricted_category.allowed_tag_groups = [tag_group_2.name]
+
+            put "/t/#{topic.slug}/#{topic.id}.json", params: { category_id: restricted_category.id }
+
+            result = ::JSON.parse(response.body)
+
+            expect(response.status).to eq(422)
+            expect(result['errors']).to be_present
+            expect(topic.reload.category_id).not_to eq(restricted_category.id)
+          end
+
+          it 'can change to a category allowing this topic current tags' do
+            restricted_category.allowed_tags = [tag1.name]
+
+            put "/t/#{topic.slug}/#{topic.id}.json", params: { category_id: restricted_category.id }
+
+            expect(response.status).to eq(200)
+          end
+
+          it 'can change to a category allowing this topic current tags (through tag_group)' do
+            tag_group_1.tags = [tag1]
+            restricted_category.allowed_tag_groups = [tag_group_1.name]
+
+            put "/t/#{topic.slug}/#{topic.id}.json", params: { category_id: restricted_category.id }
+
+            expect(response.status).to eq(200)
+          end
+
+          it 'can change to a category allowing any tag' do
+            put "/t/#{topic.slug}/#{topic.id}.json", params: { category_id: category.id }
+
+            expect(response.status).to eq(200)
           end
         end
 
@@ -1720,6 +1792,9 @@ RSpec.describe TopicsController do
     let(:topic) { post.topic }
 
     it 'returns first post of the topic' do
+      # we need one for suggested
+      create_post
+
       get "/t/#{topic.id}/posts.json"
 
       expect(response.status).to eq(200)
@@ -1727,6 +1802,13 @@ RSpec.describe TopicsController do
       body = JSON.parse(response.body)
 
       expect(body["post_stream"]["posts"].first["id"]).to eq(post.id)
+
+      expect(body["suggested_topics"]).to eq(nil)
+
+      get "/t/#{topic.id}/posts.json?include_suggested=true"
+      body = JSON.parse(response.body)
+
+      expect(body["suggested_topics"]).not_to eq(nil)
     end
 
     describe 'filtering by post number with filters' do
@@ -1825,8 +1907,8 @@ RSpec.describe TopicsController do
 
   describe '#make_banner' do
     it 'needs you to be a staff member' do
-      sign_in(Fabricate(:user))
-      put "/t/99/make-banner.json"
+      topic = Fabricate(:topic, user: sign_in(Fabricate(:trust_level_4)))
+      put "/t/#{topic.id}/make-banner.json"
       expect(response).to be_forbidden
     end
 
@@ -1844,8 +1926,8 @@ RSpec.describe TopicsController do
 
   describe '#remove_banner' do
     it 'needs you to be a staff member' do
-      sign_in(Fabricate(:user))
-      put "/t/99/remove-banner.json"
+      topic = Fabricate(:topic, user: sign_in(Fabricate(:trust_level_4)), archetype: Archetype.banner)
+      put "/t/#{topic.id}/remove-banner.json"
       expect(response).to be_forbidden
     end
 
@@ -1931,7 +2013,7 @@ RSpec.describe TopicsController do
       post = create_post
       post2 = create_post(topic_id: post.topic_id)
 
-      PostAction.act(user, post2, bookmark)
+      PostActionCreator.new(user, post2, bookmark).perform
 
       put "/t/#{post.topic_id}/bookmark.json"
       expect(PostAction.where(user_id: user.id, post_action_type: bookmark).count).to eq(2)

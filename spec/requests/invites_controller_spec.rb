@@ -213,6 +213,19 @@ describe InvitesController do
       end
     end
 
+    context 'with an invalid invite record' do
+      let(:invite) { Fabricate(:invite) }
+      it "responds with error message" do
+        invite.update_attribute(:email, "John Doe <john.doe@example.com>")
+        put "/invites/show/#{invite.invite_key}.json"
+        expect(response.status).to eq(200)
+        json = JSON.parse(response.body)
+        expect(json["success"]).to eq(false)
+        expect(json["message"]).to eq(I18n.t('invite.error_message'))
+        expect(session[:current_user_id]).to be_blank
+      end
+    end
+
     context 'with a deleted invite' do
       let(:topic) { Fabricate(:topic) }
 
@@ -285,10 +298,6 @@ describe InvitesController do
         end
 
         context '.post_process_invite' do
-          before do
-            SiteSetting.queue_jobs = true
-          end
-
           it 'sends a welcome message if set' do
             user.send_welcome_message = true
             put "/invites/show/#{invite.invite_key}.json"
@@ -453,7 +462,6 @@ describe InvitesController do
       end
 
       it "resends the invite" do
-        SiteSetting.queue_jobs = true
         post "/invites/reinvite.json", params: { email: invite.email }
         expect(response.status).to eq(200)
         expect(Jobs::InviteEmail.jobs.size).to eq(1)
@@ -483,7 +491,6 @@ describe InvitesController do
       end
 
       it "allows admin to bulk invite" do
-        SiteSetting.queue_jobs = true
         sign_in(Fabricate(:admin))
         post "/invites/upload_csv.json", params: { file: file, name: filename }
         expect(response.status).to eq(200)

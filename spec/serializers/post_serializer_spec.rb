@@ -23,7 +23,7 @@ describe PostSerializer do
 
     before do
       acted_ids.each do |id|
-        PostAction.act(actor, post, id)
+        PostActionCreator.new(actor, post, id).perform
       end
       post.reload
     end
@@ -172,6 +172,37 @@ describe PostSerializer do
       end
     end
 
+  end
+
+  context "a post with notices" do
+    let(:user) { Fabricate(:user, trust_level: 1) }
+    let(:user_tl1) { Fabricate(:user, trust_level: 1) }
+    let(:user_tl2) { Fabricate(:user, trust_level: 2) }
+
+    let(:post) {
+      post = Fabricate(:post, user: user)
+      post.custom_fields["post_notice_type"] = "returning"
+      post.custom_fields["post_notice_time"] = 1.day.ago
+      post.save_custom_fields
+      post
+    }
+
+    def json_for_user(user)
+      PostSerializer.new(post, scope: Guardian.new(user), root: false).as_json
+    end
+
+    it "will not show for poster and TL2+ users" do
+      expect(json_for_user(nil)[:post_notice_type]).to eq(nil)
+      expect(json_for_user(user)[:post_notice_type]).to eq(nil)
+
+      SiteSetting.min_post_notice_tl = 2
+      expect(json_for_user(user_tl1)[:post_notice_type]).to eq(nil)
+      expect(json_for_user(user_tl2)[:post_notice_type]).to eq("returning")
+
+      SiteSetting.min_post_notice_tl = 1
+      expect(json_for_user(user_tl1)[:post_notice_type]).to eq("returning")
+      expect(json_for_user(user_tl2)[:post_notice_type]).to eq("returning")
+    end
   end
 
 end

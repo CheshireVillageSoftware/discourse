@@ -44,6 +44,7 @@ class TopicCreator
     create_warning(topic)
     watch_topic(topic)
     create_shared_draft(topic)
+    UserActionManager.topic_created(topic)
 
     topic
   end
@@ -260,7 +261,10 @@ class TopicCreator
   end
 
   def check_can_send_permission!(topic, obj)
-    rollback_with!(topic, :cant_send_pm) unless @opts[:skip_validations] || @guardian.can_send_private_message?(obj)
+    unless @opts[:skip_validations] ||
+      @guardian.can_send_private_message?(obj, notify_moderators: topic&.subtype == TopicSubtype.notify_moderators)
+      rollback_with!(topic, :cant_send_pm)
+    end
   end
 
   def find_or_create_user(email, display_name)

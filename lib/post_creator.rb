@@ -115,10 +115,12 @@ class PostCreator
       User
         .joins("LEFT JOIN user_options ON user_options.user_id = users.id")
         .joins("LEFT JOIN muted_users ON muted_users.user_id = users.id AND muted_users.muted_user_id = #{@user.id.to_i}")
+        .joins("LEFT JOIN ignored_users ON ignored_users.user_id = users.id AND ignored_users.ignored_user_id = #{@user.id.to_i}")
         .where("user_options.user_id IS NOT NULL")
         .where("
           (user_options.user_id IN (:user_ids) AND NOT user_options.allow_private_messages) OR
-          muted_users.user_id IN (:user_ids)
+          muted_users.user_id IN (:user_ids) OR
+          ignored_users.user_id IN (:user_ids)
         ", user_ids: users.keys)
         .pluck(:id).each do |m|
 
@@ -165,7 +167,9 @@ class PostCreator
       transaction do
         build_post_stats
         create_topic
+        create_post_notice
         save_post
+        UserActionManager.post_created(@post)
         extract_links
         track_topic
         update_topic_stats
@@ -247,7 +251,11 @@ class PostCreator
     post.word_count = post.raw.scan(/[[:word:]]+/).size
 
     whisper = post.post_type == Post.types[:whisper]
-    post.post_number ||= Topic.next_post_number(post.topic_id, post.reply_to_post_number.present?, whisper)
+    increase_posts_count = !post.topic&.private_message? || post.post_type != Post.types[:small_action]
+    post.post_number ||= Topic.next_post_number(post.topic_id,
+      reply: post.reply_to_post_number.present?,
+      whisper: whisper,
+      post: increase_posts_count)
 
     cooking_options = post.cooking_options || {}
     cooking_options[:topic_id] = post.topic_id
@@ -359,7 +367,7 @@ class PostCreator
                            limit_once_per: 24.hours,
                            message_params: { domains: @post.linked_hosts.keys.join(', ') })
     elsif @post && errors.blank? && !skip_validations?
-      SpamRulesEnforcer.enforce!(@post)
+      SpamRule::FlagSockpuppets.new(@post).perform
     end
   end
 
@@ -412,16 +420,18 @@ class PostCreator
   end
 
   def update_topic_stats
+    attrs = { updated_at: Time.now }
+
     if @post.post_type != Post.types[:whisper]
-      attrs = {}
       attrs[:last_posted_at] = @post.created_at
       attrs[:last_post_user_id] = @post.user_id
       attrs[:word_count] = (@topic.word_count || 0) + @post.word_count
       attrs[:excerpt] = @post.excerpt_for_topic if new_topic?
       attrs[:bumped_at] = @post.created_at unless @post.no_bump
-      attrs[:updated_at] = Time.now
       @topic.update_columns(attrs)
     end
+
+    @topic.update_columns(attrs)
   end
 
   def update_topic_auto_close
@@ -506,6 +516,23 @@ class PostCreator
     @user.user_stat.save!
 
     @user.update_attributes(last_posted_at: @post.created_at)
+  end
+
+  def create_post_notice
+    return if @opts[:import_mode] || @user.bot? || @user.staged
+
+    last_post_time = Post.where(user_id: @user.id)
+      .order(created_at: :desc)
+      .limit(1)
+      .pluck(:created_at)
+      .first
+
+    if !last_post_time
+      @post.custom_fields["post_notice_type"] = "first"
+    elsif SiteSetting.returning_users_days > 0 && last_post_time < SiteSetting.returning_users_days.days.ago
+      @post.custom_fields["post_notice_type"] = "returning"
+      @post.custom_fields["post_notice_time"] = last_post_time.iso8601
+    end
   end
 
   def publish

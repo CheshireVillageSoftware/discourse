@@ -83,7 +83,14 @@ class PostRevisor
         tc.check_result(false)
         next
       end
-      tc.record_change('tags', prev_tags, tags) unless prev_tags.sort == tags.sort
+      if prev_tags.sort != tags.sort
+        tc.record_change('tags', prev_tags, tags)
+        DB.after_commit do
+          post = tc.topic.ordered_posts.first
+          notified_user_ids = [post.user_id, post.last_editor_id].uniq
+          Jobs.enqueue(:notify_tag_change, post_id: post.id, notified_user_ids: notified_user_ids)
+        end
+      end
     end
   end
 
@@ -120,8 +127,6 @@ class PostRevisor
     @opts = opts
 
     @topic_changes = TopicChanges.new(@topic, editor)
-
-    return false if @fields.has_key?(:raw) && @fields[:raw].blank?
 
     # some normalization
     @fields[:raw] = cleanup_whitespaces(@fields[:raw]) if @fields.has_key?(:raw)
@@ -207,7 +212,7 @@ class PostRevisor
   end
 
   def cleanup_whitespaces(raw)
-    TextCleaner.normalize_whitespaces(raw).gsub(/\s+\z/, "")
+    raw.present? ? TextCleaner.normalize_whitespaces(raw).gsub(/\s+\z/, "") : ""
   end
 
   def should_revise?
@@ -287,8 +292,8 @@ class PostRevisor
   end
 
   def ninja_edit?
-    return false if @post.has_active_flag?
     return false if (@revised_at - @last_version_at) > SiteSetting.editing_grace_period.to_i
+    return false if @post.reviewable_flag.present?
 
     if new_raw = @fields[:raw]
 
@@ -338,18 +343,16 @@ class PostRevisor
       prev_owner = User.find(@post.user_id)
       new_owner = User.find(@fields["user_id"])
 
-      # UserActionCreator will create new UserAction records for the new owner
-
       UserAction.where(target_post_id: @post.id)
         .where(user_id: prev_owner.id)
         .where(action_type: USER_ACTIONS_TO_REMOVE)
-        .destroy_all
+        .update_all(user_id: new_owner.id)
 
       if @post.post_number == 1
         UserAction.where(target_topic_id: @post.topic_id)
           .where(user_id: prev_owner.id)
           .where(action_type: UserAction::NEW_TOPIC)
-          .destroy_all
+          .update_all(user_id: new_owner.id)
       end
     end
 
@@ -514,7 +517,7 @@ class PostRevisor
   end
 
   def bypass_bump?
-    !@post_successfully_saved || @topic_changes.errored? || @opts[:bypass_bump] == true
+    !@post_successfully_saved || @topic_changes.errored? || @opts[:bypass_bump] == true || @post.whisper?
   end
 
   def is_last_post?

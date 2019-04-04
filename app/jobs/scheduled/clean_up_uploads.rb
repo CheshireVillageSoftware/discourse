@@ -7,6 +7,7 @@ module Jobs
 
       # always remove invalid upload records
       Upload
+        .by_users
         .where("retain_hours IS NULL OR created_at < current_timestamp - interval '1 hour' * retain_hours")
         .where("created_at < ?", grace_period.hour.ago)
         .where(url: "")
@@ -44,7 +45,8 @@ module Jobs
         end
       end.compact.uniq
 
-      result = Upload.where("uploads.retain_hours IS NULL OR uploads.created_at < current_timestamp - interval '1 hour' * uploads.retain_hours")
+      result = Upload.by_users
+        .where("uploads.retain_hours IS NULL OR uploads.created_at < current_timestamp - interval '1 hour' * uploads.retain_hours")
         .where("uploads.created_at < ?", grace_period.hour.ago)
         .joins(<<~SQL)
           LEFT JOIN site_settings ss
@@ -74,7 +76,7 @@ module Jobs
       result.find_each do |upload|
         if upload.sha1.present?
           encoded_sha = Base62.encode(upload.sha1.hex)
-          next if QueuedPost.where("raw LIKE '%#{upload.sha1}%' OR raw LIKE '%#{encoded_sha}%'").exists?
+          next if ReviewableQueuedPost.where("payload->>'raw' LIKE '%#{upload.sha1}%' OR payload->>'raw' LIKE '%#{encoded_sha}%'").exists?
           next if Draft.where("data LIKE '%#{upload.sha1}%' OR data LIKE '%#{encoded_sha}%'").exists?
           upload.destroy
         else

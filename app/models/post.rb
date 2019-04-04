@@ -10,9 +10,6 @@ require 'archetype'
 require 'digest/sha1'
 
 class Post < ActiveRecord::Base
-  # TODO: Remove this after 19th Dec 2018
-  self.ignored_columns = %w{vote_count}
-
   include RateLimiter::OnCreateRecord
   include Trashable
   include Searchable
@@ -58,7 +55,6 @@ class Post < ActiveRecord::Base
   validates_with ::Validators::PostValidator, unless: :skip_validation
 
   after_save :index_search
-  after_save :create_user_action
 
   # We can pass several creating options to a post via attributes
   attr_accessor :image_sizes, :quoted_post_numbers, :no_bump, :invalidate_oneboxes, :cooking_options, :skip_unique_check, :skip_validation
@@ -191,12 +187,12 @@ class Post < ActiveRecord::Base
 
   def trash!(trashed_by = nil)
     self.topic_links.each(&:destroy)
+    self.delete_post_notices
     super(trashed_by)
   end
 
   def recover!
     super
-    update_flagged_posts_count
     recover_public_post_actions
     TopicLink.extract_from(self)
     QuotedPost.extract_from(self)
@@ -380,8 +376,10 @@ class Post < ActiveRecord::Base
       ])
   end
 
-  def update_flagged_posts_count
-    PostAction.update_flagged_posts_count
+  def delete_post_notices
+    self.custom_fields.delete("post_notice_type")
+    self.custom_fields.delete("post_notice_time")
+    self.save_custom_fields
   end
 
   def recover_public_post_actions
@@ -458,8 +456,49 @@ class Post < ActiveRecord::Base
     post_actions.active.where(post_action_type_id: PostActionType.flag_types_without_custom.values)
   end
 
-  def has_active_flag?
-    active_flags.count != 0
+  def reviewable_flag
+    ReviewableFlaggedPost.pending.find_by(target: self)
+  end
+
+  def hide!(post_action_type_id, reason = nil)
+    return if hidden?
+
+    reason ||= hidden_at ?
+      Post.hidden_reasons[:flag_threshold_reached_again] :
+      Post.hidden_reasons[:flag_threshold_reached]
+
+    hiding_again = hidden_at.present?
+
+    self.hidden = true
+    self.hidden_at = Time.zone.now
+    self.hidden_reason_id = reason
+    save!
+
+    Topic.where(
+      "id = :topic_id AND NOT EXISTS(SELECT 1 FROM POSTS WHERE topic_id = :topic_id AND NOT hidden)",
+      topic_id: topic_id
+    ).update_all(visible: false)
+
+    # inform user
+    if user.present?
+      options = {
+        url: url,
+        edit_delay: SiteSetting.cooldown_minutes_after_hiding_posts,
+        flag_reason: I18n.t(
+          "flag_reasons.#{PostActionType.types[post_action_type_id]}",
+          locale: SiteSetting.default_locale,
+          base_path: Discourse.base_path
+        )
+      }
+
+      Jobs.enqueue_in(
+        5.seconds,
+        :send_system_message,
+        user_id: user.id,
+        message_type: hiding_again ? :post_hidden_again : :post_hidden,
+        message_options: options
+      )
+    end
   end
 
   def unhide!
@@ -515,7 +554,7 @@ class Post < ActiveRecord::Base
     PostRevisor.new(self).revise!(updated_by, changes, opts)
   end
 
-  def self.rebake_old(limit, priority: :normal)
+  def self.rebake_old(limit, priority: :normal, rate_limiter: true)
 
     limiter = RateLimiter.new(
       nil,
@@ -537,7 +576,7 @@ class Post < ActiveRecord::Base
         post.rebake!(priority: priority)
 
         begin
-          limiter.performed!
+          limiter.performed! if rate_limiter
         rescue RateLimiter::LimitExceeded
           break
         end
@@ -564,7 +603,11 @@ class Post < ActiveRecord::Base
     new_cooked = cook(raw, topic_id: topic_id, invalidate_oneboxes: invalidate_oneboxes)
     old_cooked = cooked
 
-    update_columns(cooked: new_cooked, baked_at: Time.new, baked_version: BAKED_VERSION)
+    update_columns(
+      cooked: new_cooked,
+      baked_at: Time.zone.now,
+      baked_version: BAKED_VERSION
+    )
 
     if invalidate_broken_images
       custom_fields.delete(BROKEN_IMAGES)
@@ -690,17 +733,18 @@ class Post < ActiveRecord::Base
   end
 
   # Enqueue post processing for this post
-  def trigger_post_process(bypass_bump: false, priority: :normal)
+  def trigger_post_process(bypass_bump: false, priority: :normal, new_post: false)
     args = {
       post_id: id,
       bypass_bump: bypass_bump,
+      new_post: new_post,
     }
     args[:image_sizes] = image_sizes if image_sizes.present?
     args[:invalidate_oneboxes] = true if invalidate_oneboxes.present?
     args[:cooking_options] = self.cooking_options
 
-    if priority == :low
-      args[:queue] = 'low'
+    if priority && priority != :normal
+      args[:queue] = priority.to_s
     end
 
     Jobs.enqueue(:process_post, args)
@@ -819,10 +863,6 @@ class Post < ActiveRecord::Base
 
   def index_search
     SearchIndexer.index(self)
-  end
-
-  def create_user_action
-    UserActionCreator.log_post(self)
   end
 
   def locked?

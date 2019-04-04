@@ -69,8 +69,11 @@
 
     $element
       .html(DATE_TEMPLATE)
-      .attr("title", textPreview)
-      .attr("data-html-tooltip", `<div class="previews">${htmlPreview}</div>`)
+      .attr("aria-label", textPreview)
+      .attr(
+        "data-html-tooltip",
+        `<div class="locale-dates-previews">${htmlPreview}</div>`
+      )
       .addClass("cooked-date")
       .find(".relative-time")
       .text(formatedDateTime);
@@ -182,8 +185,19 @@
     const type = parts[1];
     const diff = moment().diff(dateTime, type);
     const add = Math.ceil(diff + count);
+    const wasDST = moment(dateTime.format()).isDST();
+    let dateTimeWithRecurrence = dateTime.add(add, type);
+    const isDST = moment(dateTimeWithRecurrence.format()).isDST();
 
-    return dateTime.add(add, type);
+    if (!wasDST && isDST) {
+      dateTimeWithRecurrence.subtract(1, "hour");
+    }
+
+    if (wasDST && !isDST) {
+      dateTimeWithRecurrence.add(1, "hour");
+    }
+
+    return dateTimeWithRecurrence;
   }
 
   function _createDateTimeRange(dateTime, timezone) {
@@ -221,22 +235,24 @@
       timezones.unshift(options.timezone);
     }
 
-    timezones.filter(z => z).forEach(timezone => {
-      if (_isEqualZones(timezone, displayedTimezone)) {
-        return;
-      }
+    timezones
+      .filter(z => z)
+      .forEach(timezone => {
+        if (_isEqualZones(timezone, displayedTimezone)) {
+          return;
+        }
 
-      if (_isEqualZones(timezone, watchingUserTimezone)) {
-        timezone = watchingUserTimezone;
-      }
+        if (_isEqualZones(timezone, watchingUserTimezone)) {
+          timezone = watchingUserTimezone;
+        }
 
-      previewedTimezones.push({
-        timezone,
-        dateTime: options.time
-          ? dateTime.tz(timezone).format("LLL")
-          : _createDateTimeRange(dateTime, timezone)
+        previewedTimezones.push({
+          timezone,
+          dateTime: options.time
+            ? dateTime.tz(timezone).format("LLL")
+            : _createDateTimeRange(dateTime, timezone)
+        });
       });
-    });
 
     if (!previewedTimezones.length) {
       previewedTimezones.push({

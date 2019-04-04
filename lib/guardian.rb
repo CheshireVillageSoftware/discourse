@@ -54,7 +54,6 @@ class Guardian
     end
   end
 
-  attr_accessor :can_see_emails
   attr_reader :request
 
   def initialize(user = nil, request = nil)
@@ -344,7 +343,7 @@ class Guardian
     can_send_private_message?(group)
   end
 
-  def can_send_private_message?(target)
+  def can_send_private_message?(target, notify_moderators: false)
     is_user = target.is_a?(User)
     is_group = target.is_a?(Group)
 
@@ -352,11 +351,11 @@ class Guardian
     # User is authenticated
     authenticated? &&
     # Have to be a basic level at least
-    @user.has_trust_level?(SiteSetting.min_trust_to_send_messages) &&
+    (@user.has_trust_level?(SiteSetting.min_trust_to_send_messages) || notify_moderators) &&
     # User disabled private message
     (is_staff? || is_group || target.user_option.allow_private_messages) &&
     # PMs are enabled
-    (is_staff? || SiteSetting.enable_personal_messages) &&
+    (is_staff? || SiteSetting.enable_personal_messages || notify_moderators) &&
     # Can't send PMs to suspended users
     (is_staff? || is_group || !target.suspended?) &&
     # Check group messageable level
@@ -381,10 +380,6 @@ class Guardian
     )
   end
 
-  def can_see_emails?
-    @can_see_emails
-  end
-
   def can_export_entity?(entity)
     return false unless @user
     return true if is_admin?
@@ -393,6 +388,26 @@ class Guardian
     # Regular users can only export their archives
     return false unless entity == "user_archive"
     UserExport.where(user_id: @user.id, created_at: (Time.zone.now.beginning_of_day..Time.zone.now.end_of_day)).count == 0
+  end
+
+  def can_mute_user?(user_id)
+    can_mute_users? &&
+      @user.id != user_id &&
+      User.where(id: user_id, admin: false, moderator: false).exists?
+  end
+
+  def can_mute_users?
+    return false if anonymous?
+    @user.staff? || @user.trust_level >= TrustLevel.levels[:basic]
+  end
+
+  def can_ignore_user?(user_id)
+    can_ignore_users? && @user.id != user_id && User.where(id: user_id, admin: false, moderator: false).exists?
+  end
+
+  def can_ignore_users?
+    return false if anonymous?
+    SiteSetting.ignore_user_enabled? && (@user.staff? || @user.trust_level >= TrustLevel.levels[:member])
   end
 
   def allow_themes?(theme_ids, include_preview: false)

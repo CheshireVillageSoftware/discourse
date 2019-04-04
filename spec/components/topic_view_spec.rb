@@ -31,6 +31,77 @@ describe TopicView do
     expect { TopicView.new(topic.id, admin) }.not_to raise_error
   end
 
+  context "setup_filtered_posts" do
+    describe "filters posts with ignored users" do
+      let!(:user) { Fabricate(:user) }
+      let!(:ignored_user) { Fabricate(:ignored_user, user: evil_trout, ignored_user: user) }
+      let!(:post) { Fabricate(:post, topic: topic, user: first_poster) }
+      let!(:post2) { Fabricate(:post, topic: topic, user: evil_trout) }
+      let!(:post3) { Fabricate(:post, topic: topic, user: user) }
+
+      describe "when SiteSetting.ignore_user_enabled is false" do
+        it "does not filter out ignored user posts" do
+          SiteSetting.ignore_user_enabled = false
+
+          tv = TopicView.new(topic.id, evil_trout)
+          expect(tv.filtered_post_ids).to eq([post.id, post2.id, post3.id])
+        end
+      end
+
+      describe "when SiteSetting.ignore_user_enabled is true" do
+
+        before do
+          SiteSetting.ignore_user_enabled = true
+        end
+
+        it "filters out ignored user posts" do
+          tv = TopicView.new(topic.id, evil_trout)
+          expect(tv.filtered_post_ids).to eq([post.id, post2.id])
+        end
+
+        describe "when an ignored user made the original post" do
+          let!(:post) { Fabricate(:post, topic: topic, user: user) }
+
+          it "filters out ignored user posts only" do
+            tv = TopicView.new(topic.id, evil_trout)
+            expect(tv.filtered_post_ids).to eq([post.id, post2.id])
+          end
+        end
+
+        describe "when an anonymous user made a post" do
+          let(:anonymous) { Fabricate(:anonymous) }
+          let!(:post4) { Fabricate(:post, topic: topic, user: anonymous) }
+
+          it "filters out ignored user posts only" do
+            tv = TopicView.new(topic.id, evil_trout)
+            expect(tv.filtered_post_ids).to eq([post.id, post2.id, post4.id])
+          end
+        end
+
+        describe "when an anonymous (non signed-in) user is viewing a Topic" do
+          let(:anonymous) { Fabricate(:anonymous) }
+          let!(:post4) { Fabricate(:post, topic: topic, user: anonymous) }
+
+          it "filters out ignored user posts only" do
+            tv = TopicView.new(topic.id, nil)
+            expect(tv.filtered_post_ids).to eq([post.id, post2.id, post3.id, post4.id])
+          end
+        end
+
+        describe "when a staff user is ignored" do
+          let!(:admin) { Fabricate(:user, admin: true) }
+          let!(:admin_ignored_user) { Fabricate(:ignored_user, user: evil_trout, ignored_user: admin) }
+          let!(:post4) { Fabricate(:post, topic: topic, user: admin) }
+
+          it "filters out ignored user excluding the staff user" do
+            tv = TopicView.new(topic.id, evil_trout)
+            expect(tv.filtered_post_ids).to eq([post.id, post2.id, post4.id])
+          end
+        end
+      end
+    end
+  end
+
   context "chunk_size" do
     it "returns `chunk_size` by default" do
       expect(TopicView.new(topic.id, evil_trout).chunk_size).to eq(TopicView.chunk_size)
@@ -93,12 +164,12 @@ describe TopicView do
       expect(best.posts.count).to eq(0)
 
       # It doesn't count likes from admins
-      PostAction.act(admin, p3, PostActionType.types[:like])
+      PostActionCreator.like(admin, p3)
       best = TopicView.new(topic.id, nil, best: 99, only_moderator_liked: true)
       expect(best.posts.count).to eq(0)
 
       # It should find the post liked by the moderator
-      PostAction.act(moderator, p2, PostActionType.types[:like])
+      PostActionCreator.like(moderator, p2)
       best = TopicView.new(topic.id, nil, best: 99, only_moderator_liked: true)
       expect(best.posts.count).to eq(1)
 
@@ -245,7 +316,7 @@ describe TopicView do
       end
 
       it 'returns the like' do
-        PostAction.act(evil_trout, p1, PostActionType.types[:like])
+        PostActionCreator.like(evil_trout, p1)
         expect(topic_view.all_post_actions[p1.id][PostActionType.types[:like]]).to be_present
       end
     end
@@ -256,17 +327,17 @@ describe TopicView do
       end
 
       it 'returns the active flags' do
-        PostAction.act(moderator, p1, PostActionType.types[:off_topic])
-        PostAction.act(evil_trout, p1, PostActionType.types[:off_topic])
+        PostActionCreator.off_topic(moderator, p1)
+        PostActionCreator.off_topic(evil_trout, p1)
 
-        expect(topic_view.all_active_flags[p1.id][PostActionType.types[:off_topic]].count).to eq(2)
+        expect(topic_view.all_active_flags[p1.id][PostActionType.types[:off_topic]]).to eq(2)
       end
 
       it 'returns only the active flags' do
-        PostAction.act(moderator, p1, PostActionType.types[:off_topic])
-        PostAction.act(evil_trout, p1, PostActionType.types[:off_topic])
+        reviewable = PostActionCreator.off_topic(moderator, p1).reviewable
+        PostActionCreator.off_topic(evil_trout, p1)
 
-        PostAction.defer_flags!(p1, moderator)
+        reviewable.perform(moderator, :ignore)
 
         expect(topic_view.all_active_flags[p1.id]).to eq(nil)
       end

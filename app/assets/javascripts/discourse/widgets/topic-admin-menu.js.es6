@@ -14,6 +14,7 @@ createWidget("admin-menu-button", {
       this.attach("button", {
         className,
         action: attrs.action,
+        url: attrs.url,
         icon: attrs.icon,
         label: attrs.fullLabel || `topic.${attrs.label}`,
         secondaryAction: "hideAdminMenu"
@@ -147,7 +148,7 @@ export default createWidget("topic-admin-menu", {
         className: "topic-admin-delete",
         buttonClass: "btn-danger",
         action: "deleteTopic",
-        icon: "trash-o",
+        icon: "far-trash-alt",
         label: "actions.delete"
       });
     }
@@ -184,7 +185,7 @@ export default createWidget("topic-admin-menu", {
       className: "topic-admin-status-update",
       buttonClass: "btn-default",
       action: "showTopicStatusUpdate",
-      icon: "clock-o",
+      icon: "far-clock",
       label: "actions.timed_update"
     });
 
@@ -201,12 +202,12 @@ export default createWidget("topic-admin-menu", {
       });
     }
 
-    if (this.currentUser.admin) {
+    if (this.currentUser.get("staff")) {
       buttons.push({
         className: "topic-admin-change-timestamp",
         buttonClass: "btn-default",
         action: "showChangeTimestamp",
-        icon: "calendar",
+        icon: "calendar-alt",
         label: "change_timestamp.title"
       });
     }
@@ -234,7 +235,7 @@ export default createWidget("topic-admin-menu", {
       className: "topic-admin-visible",
       buttonClass: "btn-default",
       action: "toggleVisibility",
-      icon: visible ? "eye-slash" : "eye",
+      icon: visible ? "far-eye-slash" : "far-eye",
       label: visible ? "actions.invisible" : "actions.visible"
     });
 
@@ -252,10 +253,10 @@ export default createWidget("topic-admin-menu", {
 
     if (this.currentUser.get("staff")) {
       buttons.push({
-        action: "showModerationHistory",
-        buttonClass: "btn-default",
         icon: "list",
-        fullLabel: "admin.flags.moderation_history"
+        buttonClass: "btn-default",
+        fullLabel: "review.moderation_history",
+        url: `/review?topic_id=${topic.id}&status=all`
       });
     }
 

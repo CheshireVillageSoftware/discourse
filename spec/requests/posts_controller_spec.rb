@@ -248,17 +248,25 @@ describe PostsController do
         let(:moderator) { Fabricate(:moderator) }
 
         before do
-          PostAction.act(moderator, post1, PostActionType.types[:off_topic])
-          PostAction.act(moderator, post2, PostActionType.types[:off_topic])
+          sign_in(moderator)
+          PostActionCreator.off_topic(moderator, post1)
+          PostActionCreator.off_topic(moderator, post2)
           Jobs::SendSystemMessage.clear
         end
 
-        it "defers the posts" do
-          sign_in(moderator)
-          expect(PostAction.flagged_posts_count).to eq(2)
-          delete "/posts/destroy_many.json", params: { post_ids: [post1.id, post2.id], defer_flags: true }
-          expect(Jobs::SendSystemMessage.jobs.size).to eq(0)
-          expect(PostAction.flagged_posts_count).to eq(0)
+        it "defers the child posts by default" do
+          expect(ReviewableFlaggedPost.pending.count).to eq(2)
+          delete "/posts/destroy_many.json", params: { post_ids: [post1.id, post2.id] }
+          expect(Jobs::SendSystemMessage.jobs.size).to eq(1)
+          expect(ReviewableFlaggedPost.pending.count).to eq(0)
+        end
+
+        it "can defer all posts based on `agree_with_first_reply_flag` param" do
+          expect(ReviewableFlaggedPost.pending.count).to eq(2)
+          delete "/posts/destroy_many.json", params: { post_ids: [post1.id, post2.id], agree_with_first_reply_flag: false }
+          PostActionCreator.off_topic(moderator, post1)
+          PostActionCreator.off_topic(moderator, post2)
+          Jobs::SendSystemMessage.clear
         end
       end
     end
@@ -393,6 +401,15 @@ describe PostsController do
         post.reload
         expect(post.raw).to eq('edited body')
       end
+
+      it "won't update bump date if post is a whisper" do
+        post = Fabricate(:post, post_type: Post.types[:whisper], user: user)
+
+        put "/posts/#{post.id}.json", params: update_params
+        expect(response.status).to eq(200)
+
+        expect(post.topic.reload.bumped_at).to be < post.created_at
+      end
     end
 
     it 'can not change category to a disallowed category' do
@@ -452,7 +469,7 @@ describe PostsController do
       end
 
       context "removing a bookmark" do
-        let(:post_action) { PostAction.act(user, post, PostActionType.types[:bookmark]) }
+        let(:post_action) { PostActionCreator.create(user, post, :bookmark).post_action }
         let(:admin) { Fabricate(:admin) }
 
         it "returns the right response when post is not bookmarked" do
@@ -714,7 +731,7 @@ describe PostsController do
       end
 
       it 'allows to create posts in import_mode' do
-        SiteSetting.queue_jobs = false
+        Jobs.run_immediately!
         NotificationEmailer.enable
         post_1 = Fabricate(:post)
         user = Fabricate(:user)
@@ -783,10 +800,10 @@ describe PostsController do
           user.reload
           expect(user).to be_silenced
 
-          qp = QueuedPost.first
+          rp = ReviewableQueuedPost.first
 
           mod = Fabricate(:moderator)
-          qp.approve!(mod)
+          rp.perform(mod, :approve)
 
           user.reload
           expect(user).not_to be_silenced
@@ -998,6 +1015,34 @@ describe PostsController do
           }
 
           expect(JSON.parse(response.body)["errors"]).to include(I18n.t(:spamming_host))
+        end
+
+        context "allow_uncategorized_topics is false" do
+          before do
+            SiteSetting.allow_uncategorized_topics = false
+          end
+
+          it "cant create an uncategorized post" do
+            post "/posts.json", params: {
+              raw: "a new post with no category",
+              title: "a new post with no category"
+            }
+            expect(response).not_to be_successful
+          end
+
+          context "as staff" do
+            before do
+              sign_in(Fabricate(:admin))
+            end
+
+            it "cant create an uncategorized post" do
+              post "/posts.json", params: {
+                raw: "a new post with no category",
+                title: "a new post with no category"
+              }
+              expect(response).not_to be_successful
+            end
+          end
         end
       end
     end
@@ -1405,14 +1450,14 @@ describe PostsController do
         post_disagreed = create_post(user: user)
 
         moderator = Fabricate(:moderator)
-        PostAction.act(moderator, post_agreed, PostActionType.types[:spam])
-        PostAction.act(moderator, post_deferred, PostActionType.types[:off_topic])
-        PostAction.act(moderator, post_disagreed, PostActionType.types[:inappropriate])
+        r0 = PostActionCreator.spam(moderator, post_agreed).reviewable
+        r1 = PostActionCreator.off_topic(moderator, post_deferred).reviewable
+        r2 = PostActionCreator.inappropriate(moderator, post_disagreed).reviewable
 
         admin = Fabricate(:admin)
-        PostAction.agree_flags!(post_agreed, admin)
-        PostAction.defer_flags!(post_deferred, admin)
-        PostAction.clear_flags!(post_disagreed, admin)
+        r0.perform(admin, :agree_and_keep)
+        r1.perform(admin, :ignore)
+        r2.perform(admin, :disagree)
 
         sign_in(Fabricate(:moderator))
         get "/posts/#{user.username}/flagged.json"

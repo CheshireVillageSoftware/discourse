@@ -13,10 +13,11 @@ export default MultiSelectComponent.extend(TagsMixin, {
   limit: null,
   blacklist: null,
   attributeBindings: ["categoryId"],
+  allowCreate: null,
   allowAny: Ember.computed.alias("allowCreate"),
 
   init() {
-    this._super();
+    this._super(...arguments);
 
     if (this.get("allowCreate") !== false) {
       this.set("allowCreate", this.site.get("can_create_tag"));

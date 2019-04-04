@@ -1,17 +1,20 @@
+<section class="user-content">
+
 <div class="group-members-actions">
     {{text-field value=filterInput
         placeholderKey=filterPlaceholder
+        autocomplete="discourse"
         class="group-username-filter no-blur"}}
 
   <div class="group-members-manage">
     {{#if canManageGroup}}
       {{d-button icon="plus"
-      action="showAddMembersModal"
+      action=(route-action "showAddMembersModal")
       label="groups.add_members.title"
       class="group-members-add"}}
       {{#if currentUser.admin}}
         {{d-button icon="plus"
-        action="showBulkAddModal"
+        action=(route-action "showBulkAddModal")
         label="admin.groups.bulk_add.title"
         class="group-bulk-add"}}
       {{/if}}
@@ -20,7 +23,7 @@
 </div>
 
 {{#if hasMembers}}
-  {{#load-more selector=".group-members tr" action="loadMore"}}
+  {{#load-more selector=".group-members tr" action=(action "loadMore")}}
     <table class='group-members'>
       <thead>
         {{group-index-toggle order=order desc=desc field='username_lower' i18nKey='username'}}
@@ -41,7 +44,7 @@
             <td class='group-owner'>
               {{#if m.owner}}
                 <strong class="group-owner-label">
-                  {{d-icon "shield"}}
+                  {{d-icon "shield-alt"}}
                 </strong>
               {{/if}}
             </td>
@@ -58,9 +61,9 @@
             <td>
               {{#if canManageGroup}}
                 {{group-member-dropdown
-                    removeMember="removeMember"
-                    makeOwner="makeOwner"
-                    removeOwner="removeOwner"
+                    removeMember=(action "removeMember")
+                    makeOwner=(action "makeOwner")
+                    removeOwner=(action "removeOwner")
                     member=m}}
               {{/if}}
             </td>
@@ -76,3 +79,4 @@
 
   <div>{{i18n "groups.empty.members"}}</div>
 {{/if}}
+</section>

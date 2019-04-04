@@ -8,7 +8,6 @@ class CurrentUserSerializer < BasicUserSerializer
              :read_first_notification?,
              :admin?,
              :notification_channel_position,
-             :site_flagged_posts_count,
              :moderator?,
              :staff?,
              :title,
@@ -30,8 +29,7 @@ class CurrentUserSerializer < BasicUserSerializer
              :muted_category_ids,
              :dismissed_banner_key,
              :is_anonymous,
-             :post_queue_new_count,
-             :show_queued_posts,
+             :reviewable_count,
              :read_faq,
              :automatically_unpin_topics,
              :mailing_list_mode,
@@ -43,7 +41,8 @@ class CurrentUserSerializer < BasicUserSerializer
              :external_id,
              :top_category_ids,
              :hide_profile_and_presence,
-             :groups
+             :groups,
+             :second_factor_enabled
 
   def groups
     object.visible_groups.pluck(:id, :name).map { |id, name| { id: id, name: name.downcase } }
@@ -55,10 +54,6 @@ class CurrentUserSerializer < BasicUserSerializer
 
   def can_create_topic
     scope.can_create_topic?(nil)
-  end
-
-  def include_site_flagged_posts_count?
-    object.staff?
   end
 
   def read_faq
@@ -103,10 +98,6 @@ class CurrentUserSerializer < BasicUserSerializer
 
   def redirected_to_top
     object.user_option.redirected_to_top
-  end
-
-  def site_flagged_posts_count
-    PostAction.flagged_posts_count
   end
 
   def can_send_private_email_messages
@@ -188,20 +179,8 @@ class CurrentUserSerializer < BasicUserSerializer
     object.anonymous?
   end
 
-  def post_queue_new_count
-    QueuedPost.new_count
-  end
-
-  def include_post_queue_new_count?
-    object.staff?
-  end
-
-  def show_queued_posts
-    true
-  end
-
-  def include_show_queued_posts?
-    object.staff? && (NewPostManager.queue_enabled? || QueuedPost.new_count > 0)
+  def reviewable_count
+    Reviewable.list_for(object).count
   end
 
   def mailing_list_mode
@@ -218,5 +197,9 @@ class CurrentUserSerializer < BasicUserSerializer
 
   def include_external_id?
     SiteSetting.enable_sso
+  end
+
+  def second_factor_enabled
+    object.totp_enabled?
   end
 end

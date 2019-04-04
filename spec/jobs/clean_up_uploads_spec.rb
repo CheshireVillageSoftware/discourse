@@ -50,6 +50,7 @@ describe Jobs::CleanUpUploads do
       SiteSetting.provider = SiteSettings::DbProvider.new(SiteSetting)
       SiteSetting.clean_orphan_uploads_grace_period_hours = 1
 
+      system_upload = fabricate_upload(id: -999)
       logo_upload = fabricate_upload
       logo_small_upload = fabricate_upload
       digest_logo_upload = fabricate_upload
@@ -84,7 +85,8 @@ describe Jobs::CleanUpUploads do
         opengraph_image_upload,
         twitter_summary_large_image_upload,
         favicon_upload,
-        apple_touch_icon_upload
+        apple_touch_icon_upload,
+        system_upload
       ].each { |record| expect(Upload.exists?(id: record.id)).to eq(true) }
 
       fabricate_upload
@@ -236,12 +238,9 @@ describe Jobs::CleanUpUploads do
     upload = fabricate_upload
     upload2 = fabricate_upload
 
-    QueuedPost.create(
-      queue: "uploads",
-      state: QueuedPost.states[:new],
-      user_id: Fabricate(:user).id,
-      raw: "#{upload.sha1}\n#{upload2.short_url}",
-      post_options: {}
+    ReviewableQueuedPost.create(
+      created_by: Fabricate(:user),
+      payload: { raw: "#{upload.sha1}\n#{upload2.short_url}" },
     )
 
     Jobs::CleanUpUploads.new.execute(nil)

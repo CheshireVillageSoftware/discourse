@@ -82,8 +82,10 @@ shared_examples "backup store" do
 
     describe "#reset_cache" do
       it "resets the storage stats report" do
+        Report.stubs(:report_storage_stats)
         report_type = "storage_stats"
         report = Report.find(report_type)
+
         Report.cache(report, 35.minutes)
         expect(Report.find_cached(report_type)).to be_present
 
@@ -213,7 +215,9 @@ shared_examples "remote backup store" do
 
     describe "#upload_file" do
       def upload_file
-        freeze_time
+        # time has fidelity issues freeze a time that is not going to be prone
+        # to that
+        freeze_time(Time.now.to_s)
 
         backup = BackupFile.new(
           filename: "foo.tar.gz",

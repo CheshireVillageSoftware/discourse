@@ -15,7 +15,7 @@ function addFlagProperty(prop) {
 const PANEL_BODY_MARGIN = 30;
 
 //android supports pulling in from the screen edges
-const SCREEN_EDGE_MARGIN = 30;
+const SCREEN_EDGE_MARGIN = 20;
 const SCREEN_OFFSET = 300;
 
 const SiteHeaderComponent = MountWidget.extend(Docking, PanEvents, {
@@ -137,6 +137,7 @@ const SiteHeaderComponent = MountWidget.extend(Docking, PanEvents, {
       this._isPanning = true;
       $("header.d-header").removeClass("scroll-down scroll-up");
       this.eventDispatched(this._leftMenuAction(), "header");
+      window.requestAnimationFrame(() => this.panMove(e));
     } else if (
       windowWidth - center.x < SCREEN_EDGE_MARGIN &&
       !this.$(".menu-panel").length &&
@@ -148,6 +149,7 @@ const SiteHeaderComponent = MountWidget.extend(Docking, PanEvents, {
       this._isPanning = true;
       $("header.d-header").removeClass("scroll-down scroll-up");
       this.eventDispatched(this._rightMenuAction(), "header");
+      window.requestAnimationFrame(() => this.panMove(e));
     } else {
       this._isPanning = false;
     }
@@ -225,48 +227,47 @@ const SiteHeaderComponent = MountWidget.extend(Docking, PanEvents, {
   },
 
   didInsertElement() {
-    this._super();
+    this._super(...arguments);
+    const { isAndroid } = this.capabilities;
     $(window).on("resize.discourse-menu-panel", () => this.afterRender());
 
-    this.appEvents.on("header:show-topic", topic => this.setTopic(topic));
-    this.appEvents.on("header:hide-topic", () => this.setTopic(null));
+    this.appEvents.on("header:show-topic", this, "setTopic");
+    this.appEvents.on("header:hide-topic", this, "setTopic");
 
     this.dispatch("notifications:changed", "user-notifications");
     this.dispatch("header:keyboard-trigger", "header");
     this.dispatch("search-autocomplete:after-complete", "search-term");
 
-    this.appEvents.on("dom:clean", () => {
-      // For performance, only trigger a re-render if any menu panels are visible
-      if (this.$(".menu-panel").length) {
-        this.eventDispatched("dom:clean", "header");
-      }
-    });
+    this.appEvents.on("dom:clean", this, "_cleanDom");
 
-    if (this.site.mobileView) {
-      $("body")
-        .on("pointerdown", e => this._panStart(e))
-        .on("pointermove", e => this._panMove(e))
-        .on("pointerup", e => this._panMove(e))
-        .on("pointercancel", e => this._panMove(e));
+    // Only add listeners for opening menus by swiping them in on Android devices
+    // iOS will respond to these events, but also does swiping for back/forward
+    if (isAndroid) {
+      this.addTouchListeners($("body"));
+    }
+  },
+
+  _cleanDom() {
+    // For performance, only trigger a re-render if any menu panels are visible
+    if (this.$(".menu-panel").length) {
+      this.eventDispatched("dom:clean", "header");
     }
   },
 
   willDestroyElement() {
-    this._super();
+    this._super(...arguments);
+    const { isAndroid } = this.capabilities;
     $("body").off("keydown.header");
     $(window).off("resize.discourse-menu-panel");
 
-    this.appEvents.off("header:show-topic");
-    this.appEvents.off("header:hide-topic");
-    this.appEvents.off("dom:clean");
+    this.appEvents.off("header:show-topic", this, "setTopic");
+    this.appEvents.off("header:hide-topic", this, "setTopic");
+    this.appEvents.off("dom:clean", this, "_cleanDom");
 
-    if (this.site.mobileView) {
-      $("body")
-        .off("pointerdown")
-        .off("pointerup")
-        .off("pointermove")
-        .off("pointercancel");
+    if (isAndroid) {
+      this.removeTouchListeners($("body"));
     }
+
     Ember.run.cancel(this._scheduledRemoveAnimate);
     window.cancelAnimationFrame(this._scheduledMovingAnimation);
   },
@@ -422,8 +423,7 @@ function applyFlaggedProperties() {
   });
 }
 
-addFlagProperty("currentUser.site_flagged_posts_count");
-addFlagProperty("currentUser.post_queue_new_count");
+addFlagProperty("currentUser.reviewable_count");
 
 export { addFlagProperty, applyFlaggedProperties };
 

@@ -12,7 +12,7 @@ class SessionController < ApplicationController
   before_action :check_local_login_allowed, only: %i(create forgot_password email_login)
   before_action :rate_limit_login, only: %i(create email_login)
   skip_before_action :redirect_to_login_if_required
-  skip_before_action :preload_json, :check_xhr, only: %i(sso sso_login sso_provider destroy email_login)
+  skip_before_action :preload_json, :check_xhr, only: %i(sso sso_login sso_provider destroy email_login one_time_password)
 
   ACTIVATE_USER_KEY = "activate_user"
 
@@ -174,7 +174,7 @@ class SessionController < ApplicationController
           begin
             uri = URI(return_path)
             if (uri.hostname == Discourse.current_hostname)
-              return_path = uri.request_uri
+              return_path = uri.to_s
             elsif !SiteSetting.sso_allows_all_return_paths
               return_path = path("/")
             end
@@ -183,8 +183,10 @@ class SessionController < ApplicationController
           end
         end
 
-        # never redirects back to sso in an sso loop
-        if return_path.start_with?(path("/session/sso"))
+        # this can be done more surgically with a regex
+        # but it the edge case of never supporting redirects back to
+        # any url with `/session/sso` in it anywhere is reasonable
+        if return_path.include?(path("/session/sso"))
           return_path = path("/")
         end
 
@@ -319,6 +321,20 @@ class SessionController < ApplicationController
     render layout: 'no_ember'
   end
 
+  def one_time_password
+    otp_username = $redis.get "otp_#{params[:token]}"
+
+    if otp_username && user = User.find_by_username(otp_username)
+      log_on_user(user)
+      $redis.del "otp_#{params[:token]}"
+      return redirect_to path("/")
+    else
+      @error = I18n.t('user_api_key.invalid_token')
+    end
+
+    render layout: 'no_ember'
+  end
+
   def forgot_password
     params.require(:login)
 
@@ -329,7 +345,7 @@ class SessionController < ApplicationController
     RateLimiter.new(nil, "forgot-password-login-min-#{params[:login].to_s[0..100]}", 3, 1.minute).performed!
 
     user = User.find_by_username_or_email(params[:login])
-    user_presence = user.present? && user.id > 0 && !user.staged
+    user_presence = user.present? && user.human? && !user.staged
     if user_presence
       email_token = user.email_tokens.create(email: user.email)
       Jobs.enqueue(:critical_user_email, type: :forgot_password, user_id: user.id, email_token: email_token.token)

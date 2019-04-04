@@ -43,7 +43,7 @@ class S3Helper
       end
     end
 
-    return path, etag
+    return path, etag.gsub('"', '')
   end
 
   def remove(s3_filename, copy_to_tombstone = false)
@@ -192,10 +192,10 @@ class S3Helper
 
   def self.s3_options(obj)
     opts = {
-      region: obj.s3_region,
-      endpoint: SiteSetting.s3_endpoint,
-      force_path_style: SiteSetting.s3_force_path_style
+      region: obj.s3_region
     }
+
+    opts[:endpoint] = SiteSetting.s3_endpoint if SiteSetting.s3_endpoint.present?
 
     unless obj.s3_use_iam_profile
       opts[:access_key_id] = obj.s3_access_key_id
@@ -203,6 +203,20 @@ class S3Helper
     end
 
     opts
+  end
+
+  def download_file(filename, destination_path, failure_message = nil)
+    unless object(filename).download_file(destination_path)
+      raise failure_message&.to_s || "Failed to download file"
+    end
+  end
+
+  def s3_client
+    @s3_client ||= Aws::S3::Client.new(@s3_options)
+  end
+
+  def s3_inventory_path(path = 'inventory')
+    get_path_for_s3_upload(path)
   end
 
   private
@@ -226,10 +240,6 @@ class S3Helper
 
   def multisite_upload_path
     File.join("uploads", RailsMultisite::ConnectionManagement.current_db, "/")
-  end
-
-  def s3_client
-    @s3_client ||= Aws::S3::Client.new(@s3_options)
   end
 
   def s3_resource

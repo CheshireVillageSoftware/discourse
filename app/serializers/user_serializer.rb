@@ -49,6 +49,10 @@ class UserSerializer < BasicUserSerializer
              :can_edit_email,
              :can_edit_name,
              :stats,
+             :ignored,
+             :muted,
+             :can_ignore_user,
+             :can_mute_user,
              :can_send_private_messages,
              :can_send_private_message_to_user,
              :bio_excerpt,
@@ -110,6 +114,7 @@ class UserSerializer < BasicUserSerializer
                      :custom_avatar_template,
                      :has_title_badges,
                      :muted_usernames,
+                     :ignored_usernames,
                      :mailing_list_posts_per_day,
                      :can_change_bio,
                      :user_api_keys,
@@ -274,6 +279,22 @@ class UserSerializer < BasicUserSerializer
     UserAction.stats(object.id, scope)
   end
 
+  def ignored
+    IgnoredUser.where(user_id: scope.user&.id, ignored_user_id: object.id).exists?
+  end
+
+  def muted
+    MutedUser.where(user_id: scope.user&.id, muted_user_id: object.id).exists?
+  end
+
+  def can_mute_user
+    scope.can_mute_user?(object.id)
+  end
+
+  def can_ignore_user
+    scope.can_ignore_user?(object.id)
+  end
+
   # Needed because 'send_private_message_to_user' will always return false
   # when the current user is being serialized
   def can_send_private_messages
@@ -365,6 +386,10 @@ class UserSerializer < BasicUserSerializer
 
   def muted_usernames
     MutedUser.where(user_id: object.id).joins(:muted_user).pluck(:username)
+  end
+
+  def ignored_usernames
+    IgnoredUser.where(user_id: object.id).joins(:ignored_user).pluck(:username)
   end
 
   def include_private_messages_stats?

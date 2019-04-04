@@ -1,5 +1,6 @@
 require_dependency 'new_post_manager'
 require_dependency 'post_creator'
+require_dependency 'post_action_destroyer'
 require_dependency 'post_destroyer'
 require_dependency 'post_merger'
 require_dependency 'distributed_memoizer'
@@ -336,7 +337,7 @@ class PostsController < ApplicationController
 
   def destroy_many
     params.require(:post_ids)
-    defer_flags = params[:defer_flags] || false
+    agree_with_first_reply_flag = (params[:agree_with_first_reply_flag] || true).to_s == "true"
 
     posts = Post.where(id: post_ids_including_replies)
     raise Discourse::InvalidParameters.new(:post_ids) if posts.blank?
@@ -345,7 +346,9 @@ class PostsController < ApplicationController
     posts.each { |p| guardian.ensure_can_delete!(p) }
 
     Post.transaction do
-      posts.each { |p| PostDestroyer.new(current_user, p, defer_flags: defer_flags).destroy }
+      posts.each_with_index do |p, i|
+        PostDestroyer.new(current_user, p, defer_flags: !(agree_with_first_reply_flag && i == 0)).destroy
+      end
     end
 
     render body: nil
@@ -476,7 +479,8 @@ class PostsController < ApplicationController
   def bookmark
     if params[:bookmarked] == "true"
       post = find_post_from_params
-      PostAction.act(current_user, post, PostActionType.types[:bookmark])
+      result = PostActionCreator.create(current_user, post, :bookmark)
+      return render_json_error(result) if result.failed?
     else
       post_action = PostAction.find_by(post_id: params[:post_id], user_id: current_user.id)
       raise Discourse::NotFound unless post_action
@@ -484,7 +488,8 @@ class PostsController < ApplicationController
       post = Post.with_deleted.find_by(id: post_action&.post_id)
       raise Discourse::NotFound unless post
 
-      PostAction.remove_act(current_user, post, PostActionType.types[:bookmark])
+      result = PostActionDestroyer.destroy(current_user, post, :bookmark)
+      return render_json_error(result) if result.failed?
     end
 
     topic_user = TopicUser.get(post.topic, current_user)

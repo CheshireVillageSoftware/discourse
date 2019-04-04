@@ -6,10 +6,9 @@ require_dependency 'pretty_text'
 require_dependency 'quote_comparer'
 
 class CookedPostProcessor
-  include ActionView::Helpers::NumberHelper
-
   INLINE_ONEBOX_LOADING_CSS_CLASS = "inline-onebox-loading"
   INLINE_ONEBOX_CSS_CLASS = "inline-onebox"
+  LIGHTBOX_WRAPPER_CSS_CLASS = "lightbox-wrapper"
   LOADING_SIZE = 10
   LOADING_COLORS = 32
 
@@ -33,10 +32,10 @@ class CookedPostProcessor
     @disable_loading_image = !!opts[:disable_loading_image]
   end
 
-  def post_process(bypass_bump = false)
+  def post_process(bypass_bump: false, new_post: false)
     DistributedMutex.synchronize("post_process_#{@post.id}") do
       DiscourseEvent.trigger(:before_post_process_cooked, @doc, @post)
-      removed_direct_reply_full_quotes
+      removed_direct_reply_full_quotes if new_post
       post_process_oneboxes
       post_process_images
       post_process_quotes
@@ -369,7 +368,7 @@ class CookedPostProcessor
 
   def add_lightbox!(img, original_width, original_height, upload, cropped: false)
     # first, create a div to hold our lightbox
-    lightbox = create_node("div", "lightbox-wrapper")
+    lightbox = create_node("div", LIGHTBOX_WRAPPER_CSS_CLASS)
     img.add_next_sibling(lightbox)
     lightbox.add_child(img)
 
@@ -422,13 +421,14 @@ class CookedPostProcessor
 
     filename = get_filename(upload, img["src"])
     informations = "#{original_width}×#{original_height}"
-    informations << " #{number_to_human_size(upload.filesize)}" if upload
+    informations << " #{upload.human_filesize}" if upload
 
     a["title"] = CGI.escapeHTML(img["title"] || filename)
 
+    meta.add_child create_icon_node("far-image")
     meta.add_child create_span_node("filename", a["title"])
     meta.add_child create_span_node("informations", informations)
-    meta.add_child create_span_node("expand")
+    meta.add_child create_icon_node("discourse-expand")
   end
 
   def get_filename(upload, src)
@@ -568,7 +568,7 @@ class CookedPostProcessor
           new_parent = img.add_next_sibling("<div class='aspect-image' style='--aspect-ratio:#{width}/#{height};'/>")
           new_parent.first.add_child(img)
         end
-      elsif (parent_class&.include?("instagram-images") || parent_class&.include?("tweet-images")) && width > 0 && height > 0
+      elsif (parent_class&.include?("instagram-images") || parent_class&.include?("tweet-images") || parent_class&.include?("scale-images")) && width > 0 && height > 0
         img.remove_attribute("width")
         img.remove_attribute("height")
         img.parent["class"] = "aspect-image-full-size"
@@ -588,8 +588,10 @@ class CookedPostProcessor
       end
     end
 
-    @doc.css("img[src]").each do |img|
-      img["src"] = UrlHelper.cook_url(img["src"].to_s)
+    %w{src data-small-upload}.each do |selector|
+      @doc.css("img[#{selector}]").each do |img|
+        img[selector] = UrlHelper.cook_url(img[selector].to_s)
+      end
     end
   end
 
